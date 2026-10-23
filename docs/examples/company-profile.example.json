@@ -1,0 +1,15 @@
+{
+  "companyName": "Demo Company",
+  "description": "Example company used for testing.",
+  "languages": ["hassaniya", "fr", "ar", "en"],
+  "businessHours": {
+    "timezone": "Africa/Nouakchott",
+    "notes": "Configure actual client hours"
+  },
+  "humanHandoffMessage": {
+    "hassaniya": "نحوّلك لواحد من الفريق باش يساعدك أكثر.",
+    "fr": "Je vous transfère à un membre de l'équipe pour mieux vous aider.",
+    "ar": "سأحوّلك إلى أحد أعضاء الفريق لمساعدتك بشكل أفضل.",
+    "en": "I'll hand this over to a member of the team who can help further."
+  }
+}

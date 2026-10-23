@@ -1,0 +1,55 @@
+# dependencies / build output
+node_modules/
+dist/
+coverage/
+
+# secrets & credentials (templates stay tracked)
+.env
+.env.*
+!.env.example
+templates/.env
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*.crt
+credentials*.json
+service-account*.json
+
+# WhatsApp / Baileys / whatsapp-web.js session & auth state
+auth_info*/
+.wwebjs_auth/
+.wwebjs_cache/
+session/
+sessions/
+*.session
+
+# local databases, dumps, backups
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+*.bak
+*.backup
+*.tar
+*.tar.gz
+*.zip
+pgdata/
+backups/
+
+# logs / temp / generated
+*.log
+npm-debug.log*
+.tmp/
+tmp/
+*.tsbuildinfo
+
+# editor / OS / tooling
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db

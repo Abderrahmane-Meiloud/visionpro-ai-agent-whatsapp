@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VisionPro Agent AI Admin</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#15181d;--card:#fff;--mut:#6b7280;--line:#e5e7eb;--acc:#0f766e;--bad:#b91c1c}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1216;--fg:#e8eaed;--card:#171b21;--mut:#9aa3af;--line:#2a313a;--acc:#2dd4bf;--bad:#f87171}}
+*{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card);flex-wrap:wrap}
+header h1{font-size:16px;margin:0;flex:1}
+main{display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 53px)}
+@media(max-width:760px){main{grid-template-columns:1fr;height:auto}}
+#list{overflow:auto;border-right:1px solid var(--line)}
+.row{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}.row:hover,.row.sel{background:var(--card)}
+.row small{color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid var(--line)}.tag.HUMAN_PENDING{color:var(--bad);border-color:var(--bad)}.tag.HUMAN{color:var(--acc);border-color:var(--acc)}
+#conv{display:flex;flex-direction:column;min-height:300px}
+#msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:75%;padding:8px 11px;border-radius:12px;background:var(--card);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word}
+.m.OUT{align-self:flex-end;background:var(--acc);color:#fff;border-color:var(--acc)}.m small{display:block;opacity:.7;font-size:11px}
+#bar{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);flex-wrap:wrap}
+input,button,textarea{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+button{cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var(--acc)}button.d{background:var(--bad);color:#fff;border-color:var(--bad)}
+#text{flex:1;min-width:140px}
+</style></head><body>
+<header><h1>VisionPro Agent AI</h1><span id="stats"></span><span id="ai"></span><button id="toggle"></button></header>
+<main><div id="list"></div>
+<div id="conv"><div id="msgs"><p style="color:var(--mut);padding:8px">Select a conversation.</p></div>
+<div id="bar"><button id="take">Take over</button><button id="ret">Return to AI</button><input id="text" placeholder="Message (human)"><button class="p" id="send">Send</button></div></div></main>
+<script>
+let cur=null,ai=true;
+const $=id=>document.getElementById(id);
+const api=(p,o)=>fetch(p,{headers:{'Content-Type':'application/json'},...o}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
+const post=(p,b)=>api(p,{method:'POST',body:JSON.stringify(b||{})});
+function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+async function loadList(){
+  const [rows,s,st]=await Promise.all([api('/api/conversations'),api('/api/agent-settings'),api('/api/stats')]);
+  ai=s.ai_enabled;$('ai').textContent=ai?'AI: ON':'AI: PAUSED';$('toggle').textContent=ai?'PAUSE AI':'Resume AI';$('toggle').className=ai?'d':'p';
+  $('stats').textContent=`today: ${st.messages_today} msgs · ${st.handoffs_today} handoffs · ${st.failed_today} failed`;
+  const l=$('list');l.replaceChildren();
+  for(const r of rows){const d=el('div','row'+(r.id===cur?' sel':''));
+    d.append(el('b','',r.display_name||r.wa_id),document.createTextNode(' '),el('span','tag '+r.mode,r.mode),el('small','',r.handoff_reason?('⚠ '+r.handoff_reason):(r.last_text||'')));
+    d.onclick=()=>{cur=r.id;loadList();loadConv()};l.append(d)}
+}
+async function loadConv(){
+  if(!cur)return;const rows=await api('/api/conversations/'+cur);const m=$('msgs');m.replaceChildren();
+  for(const r of rows){const d=el('div','m '+r.direction,r.text||r.transcription||('['+r.message_type+']'));
+    d.append(el('small','',`${r.sender_type}${r.message_type==='AUDIO'?' (voice → transcript)':''} · ${new Date(r.created_at).toLocaleTimeString()}${r.delivery_status?' · '+r.delivery_status:''}${r.error?' · ⚠ '+r.error:''}`));m.append(d)}
+  m.scrollTop=m.scrollHeight;
+}
+$('toggle').onclick=async()=>{await post(ai?'/api/agent/pause':'/api/agent/resume');loadList()};
+$('take').onclick=async()=>{if(cur){await post(`/api/conversations/${cur}/takeover`);loadList()}};
+$('ret').onclick=async()=>{if(cur&&confirm('Return this conversation to the AI?')){await post(`/api/conversations/${cur}/return-to-ai`);loadList()}};
+$('send').onclick=async()=>{const t=$('text').value.trim();if(!cur||!t)return;try{await post(`/api/conversations/${cur}/messages`,{text:t});$('text').value='';loadConv()}catch(e){alert(e.message)}};
+loadList();setInterval(()=>{loadList();loadConv()},5000);
+</script></body></html>

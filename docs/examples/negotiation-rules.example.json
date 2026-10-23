@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "rules": [
+    {
+      "productId": "EXAMPLE",
+      "listPrice": 10000,
+      "maxAIDiscountPercent": 3,
+      "managerApprovalBelow": 9700
+    }
+  ]
+}
