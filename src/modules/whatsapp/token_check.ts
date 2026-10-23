@@ -3,7 +3,7 @@
  * (scripts/check_meta_credentials.ts) so it's testable without hitting the real Graph API.
  * Used to validate a META_ACCESS_TOKEN (scopes + expiry) BEFORE swapping it into production
  * .env, per the Phase 1 Beta work package's "credential rotation support" requirement — this is
- * a pre-flight check, not a live hot-reload (BESSMA still reads env at boot).
+ * a pre-flight check, not a live hot-reload (the agent still reads env at boot).
  */
 
 export type DebugTokenResult =

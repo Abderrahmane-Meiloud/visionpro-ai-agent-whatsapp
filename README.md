@@ -1,8 +1,8 @@
-# VisionPro AI Agent
+# VisionPro WhatsApp AI Agent
 
 > **New chat/agent? Read [HANDOFF.md](HANDOFF.md) first** (server, Meta status, what is left). Specs are in [docs/](docs/00_README_START_HERE.md).
 
-Official Meta WhatsApp Cloud API only. Specs are in `docs/`. One Express service + PostgreSQL + a small admin page.
+**VisionPro Technology** · Official Meta WhatsApp Cloud API only. Specs are in `docs/`. One Express service + PostgreSQL + a small admin page.
 
 ```bash
 npm install
