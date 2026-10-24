@@ -41,7 +41,7 @@ Express + TypeScript + PostgreSQL (`pg`, plain SQL migration in `src/schema.sql`
 - Tests: `npm test` (unit) and `npm run smoke` (needs `DATABASE_URL`; real Postgres + fake Meta; verifies bad signature 401, duplicate webhook = 1 reply, HUMAN mode = silent, paused = silent, resume works). All passed.
 - Deploy: `Dockerfile`, `docker-compose.yml` (api + db, joins external `proxy` network), `.env.example`.
 
-Deliberate deviations from the spec (documented, cheap to upgrade): plain `pg` instead of TypeORM; admin is one static HTML page + single Basic-auth user instead of Next.js + roles; only the handoff tool exists (no price/stock/order tools: no client data yet, so the agent hands those off); knowledge is placed directly in the prompt (no vector DB).
+Deliberate deviations from the spec (documented, cheap to upgrade): plain `pg` instead of TypeORM; admin is one static HTML page (not Next.js) — but staff now have individual accounts with RBAC (admin/agent/viewer), secure `node:crypto` cookie sessions, CSRF and conversation assignment (P2-A; see `docs/23_OPERATIONS.md`), with the Basic-auth bridge preserved as a read-only `service` account; only the handoff tool exists (no price/stock/order tools: no client data yet, so the agent hands those off); knowledge is placed directly in the prompt (no vector DB).
 
 ## 5. Deployment state
 - `GET /api/health` returns `{"ok":true}` when the stack is up (containers `wa-api-1`, `wa-db-1`).
@@ -67,7 +67,7 @@ Create an `A` record for the chosen subdomain (for example `wa`) pointing at the
 ## 8. Remaining TODO (in order)
 1. Owner fills Meta values in server `.env` (section 7) -> `docker compose up -d api` -> register webhook + subscribe WABA.
 2. Live test from owner's phone (recipient added): text, duplicate handling, voice note (needs OpenAI key), takeover, pause. Watch `docker compose logs -f api`.
-3. Owner provides OpenAI key -> set `OPENAI_API_KEY`, `AGENT_MOCK=false`. Verify exact model IDs against OpenAI's current model list (`gpt-6-luna`, `gpt-4o-mini-transcribe` etc. come from the spec and were NOT verified; env-driven: `OPENAI_TEXT_MODEL`, `OPENAI_TRANSCRIBE_MODEL`). Benchmark STT on real Hassaniya audio.
+3. Owner provides OpenAI key -> set `OPENAI_API_KEY`, `AGENT_MOCK=false`. Model IDs were verified against OpenAI's current docs (Oct 2026): defaults are now `OPENAI_TEXT_MODEL=gpt-5.6-terra` (verified for Chat Completions + tool calling, as the agent uses) and `OPENAI_TRANSCRIBE_MODEL=gpt-transcribe` (gpt-4o-mini-transcribe is deprecated, shut down 2027-02-26). GPT-6 tiers (`gpt-6-luna`/`gpt-6-sol`) exist but their tool-calling on Chat Completions is unconfirmed — validate one live tool call before overriding to them. Chat request params (`max_completion_tokens`, no `temperature`) are already correct for GPT-5+/6. Benchmark STT on real Hassaniya audio.
 4. Seed knowledge (company info, hours, FAQ, handoff rules) + Hassaniya vocabulary via admin panel or `docs/examples/*.json`.
 5. Hardening before real customers: permanent token, backups of `wa_pgdata` (server has `/opt/backups`; test restore), log review for secrets, reboot/restart test, rate limiting on the webhook if needed, roles/users if staff need logins.
 6. Before any real/business number: review WhatsApp Business Messaging Policy for the medical-care use case (spec file 14: do not enable AI order facilitation for restricted healthcare products), templates for business-initiated messages (NOT implemented; free-form is only sent inside the 24h window), messaging quality rating. No bulk/cold outreach ever.

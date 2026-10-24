@@ -39,6 +39,24 @@ export async function sendText(to: string, body: string): Promise<string> {
   return j.messages?.[0]?.id as string;
 }
 
+/**
+ * Send a Meta-approved template message. This is the only sanctioned way to message a customer
+ * OUTSIDE the 24h customer-service window. Callers validate the template + variables first.
+ */
+export async function sendTemplate(to: string, metaTemplateName: string, language: string, params: string[]): Promise<string> {
+  if (!cfg.graphVersion) throw new Error('META_GRAPH_API_VERSION not set');
+  const components = params.length ? [{ type: 'body', parameters: params.map((p) => ({ type: 'text', text: p })) }] : [];
+  const res = await withRetry('sendTemplate', () =>
+    fetch(`${base()}/${cfg.phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'template', template: { name: metaTemplateName, language: { code: language }, components } }),
+    }),
+  );
+  const j: any = await res.json();
+  return j.messages?.[0]?.id as string;
+}
+
 export async function markRead(messageId: string): Promise<void> {
   try {
     await fetch(`${base()}/${cfg.phoneNumberId}/messages`, {

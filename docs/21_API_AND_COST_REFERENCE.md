@@ -22,22 +22,21 @@ Phase 2 only. Verify current official Meta docs and account eligibility before i
 
 ## OpenAI
 ### Text
-Default candidate: GPT-6 Luna
-Published standard short-context pricing snapshot:
-- input: $0.05 / 1M tokens
-- cached input: $0.005 / 1M tokens
-- output: $0.25 / 1M tokens
+**Default: `gpt-5.6-terra`** — verified (Oct 2026) as a Chat Completions model that supports tool
+calling, matching the agent's architecture. Set via `OPENAI_TEXT_MODEL`.
 
-Fallback candidate: GPT-6 Sol
-- input: $1.00 / 1M
-- output: $5.00 / 1M (short-context standard snapshot)
+GPT-6 tiers remain available as overrides: `gpt-6-luna` (cheaper cost tier) and `gpt-6-sol` (stronger,
+coding/agentic). Caveat: GPT-6 tool calling on **Chat Completions** is not confirmed (GPT-6 Astra /
+6.1 Sol require the Responses API for tools); validate one live tool call before adopting. Confirm
+current prices on the pricing page below — do not hard-code.
 
 Pricing reference:
 https://developers.openai.com/api/docs/pricing
 
 ### Voice-note transcription
-- `gpt-4o-mini-transcribe`: estimated $0.003/min
-- `gpt-transcribe`: estimated $0.0045/min; supports context/keyword/multiple-language hints per model docs
+- **`gpt-transcribe`** (current default): recommended file-transcription model; supports the `prompt`
+  context field plus `keywords`/`languages` hints. Set via `OPENAI_TRANSCRIBE_MODEL`.
+- `gpt-4o-mini-transcribe` / `gpt-4o-transcribe` / `whisper-1`: **deprecated, shut down 2027-02-26** — do not use for new work.
 
 References:
 https://developers.openai.com/api/docs/pricing

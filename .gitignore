@@ -3,6 +3,13 @@ node_modules/
 dist/
 coverage/
 
+# test artifacts / local throwaway Postgres
+test-results/
+playwright-report/
+blob-report/
+.pgtmp/
+.pgtmp.log
+
 # secrets & credentials (templates stay tracked)
 .env
 .env.*

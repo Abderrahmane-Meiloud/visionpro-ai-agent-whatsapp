@@ -6,9 +6,24 @@
 
 ```bash
 npm install
-npm test                      # unit tests
-DATABASE_URL=postgresql://... npm run smoke   # e2e: dedupe, pause, takeover (fake Meta)
+npm run typecheck             # tsc --noEmit
+npm test                      # unit tests (no DB needed)
+DATABASE_URL=postgresql://... npm run smoke   # e2e (fake Meta, AGENT_MOCK): dedupe, status order,
+                                              # pause/takeover, 24h window, 404, crash recovery
 ```
+
+### Local integration DB (no Docker)
+The smoke test needs a throwaway Postgres — never point it at a production or app database. With a
+local PostgreSQL install you can spin up a disposable cluster on a spare port, e.g.:
+```bash
+initdb -D ./.pgtmp -U postgres -A trust            # once
+pg_ctl -D ./.pgtmp -o "-p 55432" -l ./.pgtmp.log start
+createdb -p 55432 -U postgres smoke
+DATABASE_URL=postgresql://postgres@localhost:55432/smoke npm run smoke
+pg_ctl -D ./.pgtmp stop                            # tear down when done
+```
+CI (`.github/workflows/ci.yml`) runs `typecheck` + `test` on every push/PR, and the smoke test
+against the runner's pre-installed Postgres (no Docker).
 
 ## Deploy (Ubuntu + Docker)
 ```bash
