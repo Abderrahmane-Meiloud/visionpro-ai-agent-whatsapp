@@ -1,11 +1,38 @@
 import { cfg } from '../../config';
 import { q, getSetting } from '../../db';
+import { log } from '../../log';
 import { requestHandoff } from '../handoff';
+import { localProvider, type BusinessProvider } from '../tools/provider';
+import { makeVisionProBusinessProvider, makeBridgeAccountTokenResolver } from '../tools/provider.visionpro';
 import { makeBusinessTools } from '../tools/registry';
 
-// Business tools (catalog/price/stock + DRAFT order creation) backed by the local provider. Read
-// tools + create_order_draft only — there is no confirm/cancel tool, so the AI can never confirm orders.
-const business = makeBusinessTools();
+// Business tools (catalog/price/stock + DRAFT order creation). Read tools + create_order_draft
+// only — there is no confirm/cancel tool, so the AI can never confirm orders. The provider is
+// picked by BUSINESS_PROVIDER env; default `local` keeps the agent's pre-integration behavior,
+// `visionpro` reads the catalog from Marketing OS over HTTP (see provider.visionpro.ts).
+function pickBusinessProvider(): BusinessProvider {
+  if (cfg.businessProvider !== 'visionpro') return localProvider;
+  if (!cfg.visionproBaseUrl || !cfg.visionproBridgePassword) {
+    log.warn('business_provider.visionpro_misconfigured', {
+      missing: [
+        !cfg.visionproBaseUrl ? 'VISIONPRO_BASE_URL' : null,
+        !cfg.visionproBridgePassword ? 'VISIONPRO_BRIDGE_PASSWORD' : null,
+      ].filter(Boolean),
+      hint: 'falling back to local business provider; LLM tool outputs continue to work against the local products/prices/inventory schema until VisionPro is configured',
+    });
+    return localProvider;
+  }
+  return makeVisionProBusinessProvider({
+    baseUrl: cfg.visionproBaseUrl,
+    getAccessToken: makeBridgeAccountTokenResolver({
+      baseUrl: cfg.visionproBaseUrl,
+      email: cfg.visionproBridgeEmail,
+      password: cfg.visionproBridgePassword,
+    }),
+  });
+}
+
+const business = makeBusinessTools(pickBusinessProvider());
 
 export type AgentResult = { reply: string; model: string; handedOff: boolean };
 

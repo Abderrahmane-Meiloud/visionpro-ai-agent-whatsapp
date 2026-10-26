@@ -48,6 +48,14 @@ export const cfg = {
   // Schema is NOT auto-applied at boot in production (avoids locking a populated DB); run the
   // migration explicitly (npm run migrate). Dev/test keep auto-migrate for convenience.
   autoMigrate: opt('AUTO_MIGRATE', opt('NODE_ENV') === 'production' ? 'false' : 'true') === 'true',
+  // Business-data provider for the agent's catalog/price/stock tools. Default `local` preserves
+  // the pre-integration behavior (reads the agent's own Postgres products/product_prices/inventory
+  // tables, see src/modules/tools/provider.ts). `visionpro` routes those tool calls to Marketing
+  // OS's /api/v1/catalog/products instead — no cross-DB SQL, no new tool exposed to the LLM.
+  businessProvider: (opt('BUSINESS_PROVIDER', 'local') === 'visionpro' ? 'visionpro' : 'local') as 'visionpro' | 'local',
+  visionproBaseUrl: opt('VISIONPRO_BASE_URL', ''),
+  visionproBridgeEmail: opt('VISIONPRO_BRIDGE_EMAIL', 'whatsapp-bridge@internal.visionpro'),
+  visionproBridgePassword: opt('VISIONPRO_BRIDGE_PASSWORD', ''),
 };
 
 export type ProdConfigInput = Pick<typeof cfg,
