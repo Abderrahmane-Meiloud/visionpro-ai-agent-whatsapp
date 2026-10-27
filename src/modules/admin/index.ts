@@ -144,7 +144,7 @@ admin.get('/api/conversations', requirePermission('view'), async (req, res) => {
   if (assignee === 'me') { if (u.id == null) where.push('c.assigned_user_id IS NULL'); else { params.push(u.id); where.push(`c.assigned_user_id = $${params.length}`); } }
   else if (assignee === 'unassigned') where.push('c.assigned_user_id IS NULL');
   else if (/^\d+$/.test(assignee)) { params.push(Number(assignee)); where.push(`c.assigned_user_id = $${params.length}`); }
-  const search = String(req.query.q ?? '').trim();
+  const search = String(req.query.q ?? '').trim().slice(0, 200);
   if (search) {
     params.push(`%${search}%`);
     const p = `$${params.length}`;
