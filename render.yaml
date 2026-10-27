@@ -1,0 +1,84 @@
+# Render Blueprint for VisionPro WhatsApp AI Agent.
+# Deployed from the visionpro-ai-agent-whatsapp repo (separate from teswi9i-ai).
+# `autoDeploy: false` — operator applies manually, never auto-deploys on push.
+# Secrets are `sync: false`: Render prompts the operator; none are stored in git.
+#
+# This service MUST be reachable by the WhatsApp Bridge (in the teswi9i-ai repo) and by
+# Meta's webhook delivery servers. The bridge reads conversations/messages over Basic auth;
+# Meta delivers inbound WhatsApp events to POST /webhooks/meta/whatsapp (signature-verified).
+#
+# DATABASE: Render's free PostgreSQL expires after 30 days and is then deleted. Use the same
+# external Supabase instance as the Marketing OS (separate schema/role), or provision a paid
+# Render Starter database ($7/mo) outside this blueprint. Set DATABASE_URL to the connection
+# string of whichever external database you choose — this blueprint provisions none.
+services:
+  - type: web
+    name: visionpro-whatsapp-agent
+    runtime: node
+    plan: free                        # CAUTION: free web services sleep after 15 min idle. Meta's
+                                      # webhook delivery retries over 24h, so messages arrive after
+                                      # cold start (~30s), but delivery is delayed. Upgrade to
+                                      # Starter ($7/mo) for reliable real-time webhook processing.
+    region: singapore                 # same region as visionpro-api for low-latency bridge calls
+    branch: release/visionpro-whatsapp-v1
+    autoDeploy: false
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: AUTO_MIGRATE
+        value: "false"                # run `npm run migrate` deliberately before first boot
+      # ── Database ──
+      - key: DATABASE_URL
+        sync: false                   # postgresql://... — the agent's own Postgres database
+      # ── Meta WhatsApp Cloud API ──
+      - key: META_GRAPH_API_VERSION
+        value: v26.0
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_PHONE_NUMBER_ID
+        sync: false
+      - key: META_ACCESS_TOKEN
+        sync: false
+      - key: META_WEBHOOK_VERIFY_TOKEN
+        sync: false
+      # ── AI Agent ──
+      - key: AGENT_MOCK
+        value: "true"                 # start in mock mode; set false when OPENAI_API_KEY is ready
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_TEXT_MODEL
+        value: gpt-5.6-terra
+      - key: REPLY_DAILY_CALL_CAP
+        value: "100"
+      # ── Company identity ──
+      - key: COMPANY_NAME
+        value: VisionPro Technology
+      # ── Admin dashboard ──
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false                   # min 16 characters in production
+      # ── Bridge credential (Marketing OS ↔ WhatsApp Agent) ──
+      - key: BRIDGE_USER
+        value: whatsapp-bridge
+      - key: BRIDGE_PASSWORD
+        sync: false
+      # ── Marketing OS integration (catalog from VisionPro) ──
+      - key: BUSINESS_PROVIDER
+        value: visionpro
+      - key: VISIONPRO_BASE_URL
+        sync: false                   # https://<api-service>.onrender.com
+      - key: VISIONPRO_BRIDGE_EMAIL
+        value: whatsapp-bridge@internal.visionpro
+      - key: VISIONPRO_BRIDGE_PASSWORD
+        sync: false
+
+  # No `databases:` section — Render's free Postgres expires after 30 days. Use an external
+  # database (Supabase free tier or Render Starter $7/mo) and set DATABASE_URL above.
