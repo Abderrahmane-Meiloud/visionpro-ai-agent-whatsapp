@@ -1,10 +1,27 @@
 import { Router, raw } from 'express';
 import { cfg } from '../../config';
 import { q } from '../../db';
+import { log } from '../../log';
+import { FailureThrottle } from '../../security/throttle';
 import { ingest } from '../conversations';
 import { shouldApplyStatus, verifySignature } from './rules';
 
 export const webhook = Router();
+
+// Abuse guard: only bad-signature requests are counted. A correctly signed Meta delivery (incl.
+// retries) never touches this, so legitimate traffic is never throttled. 30 bad sigs / 5 min / IP.
+const badSig = new FailureThrottle(30, 5 * 60_000);
+
+/**
+ * Production-INERT test seam. Runs ONLY when ALLOW_TEST_FAULTS=1 (never set in any real env). It
+ * atomically claims an operator-armed flag (`agent_settings.test_fault_arm`) and throws once, so a
+ * test can drive the processing-failure path (un-mark event + HTTP 500 → Meta retry) deterministically.
+ * It is NOT triggered by any customer message id or content.
+ */
+async function maybeInjectFault(): Promise<void> {
+  const armed = await q(`UPDATE agent_settings SET value='false'::jsonb WHERE key='test_fault_arm' AND value='true'::jsonb RETURNING key`);
+  if (armed.length) throw new Error('injected test fault (armed via test_fault_arm)');
+}
 
 // Meta verification challenge
 webhook.get('/webhooks/meta/whatsapp', (req, res) => {
@@ -14,9 +31,15 @@ webhook.get('/webhooks/meta/whatsapp', (req, res) => {
   res.sendStatus(403);
 });
 
-webhook.post('/webhooks/meta/whatsapp', raw({ type: '*/*', limit: '2mb' }), async (req, res) => {
+webhook.post('/webhooks/meta/whatsapp', raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const body: Buffer = req.body;
-  if (!verifySignature(body, req.header('x-hub-signature-256'), cfg.appSecret)) return void res.sendStatus(401);
+  const ip = req.ip ?? 'unknown';
+  if (badSig.blocked(ip)) return void res.sendStatus(429); // IP has flooded bad signatures
+  if (!verifySignature(body, req.header('x-hub-signature-256'), cfg.appSecret)) {
+    badSig.record(ip);
+    log.warn('webhook.bad_signature', { reqId: (req as any).reqId, ip });
+    return void res.sendStatus(401);
+  }
   let payload: any;
   try { payload = JSON.parse(body.toString('utf8')); } catch { return void res.sendStatus(400); }
   if (payload?.object !== 'whatsapp_business_account') return void res.sendStatus(200);
@@ -29,6 +52,7 @@ webhook.post('/webhooks/meta/whatsapp', raw({ type: '*/*', limit: '2mb' }), asyn
           `INSERT INTO webhook_events(event_key, payload) VALUES($1,$2) ON CONFLICT (event_key) DO NOTHING RETURNING id`,
           [m.id, JSON.stringify(m)]);
         if (!seen.length) continue; // duplicate delivery
+        if (cfg.allowTestFaults) await maybeInjectFault(); // no-op unless armed in a test
         const name = v.contacts?.find((c: any) => c.wa_id === m.from)?.profile?.name;
         await ingest({
           waId: m.from, name, messageId: m.id, type: m.type,
@@ -45,7 +69,7 @@ webhook.post('/webhooks/meta/whatsapp', raw({ type: '*/*', limit: '2mb' }), asyn
       }
     } catch (e: any) {
       // un-mark so Meta's retry is processed instead of being dropped as a duplicate
-      console.error('webhook processing error', e.message);
+      log.error('webhook.process_error', { reqId: (req as any).reqId, err: e.message });
       for (const m of v.messages ?? []) await q(`DELETE FROM webhook_events WHERE event_key=$1 AND status<>'PROCESSED'`, [m.id]).catch(() => {});
       failed = true;
     }

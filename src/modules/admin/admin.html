@@ -2,54 +2,410 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VisionPro WhatsApp AI Agent Admin</title>
 <style>
-:root{--bg:#f6f7f9;--fg:#15181d;--card:#fff;--mut:#6b7280;--line:#e5e7eb;--acc:#0f766e;--bad:#b91c1c}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1216;--fg:#e8eaed;--card:#171b21;--mut:#9aa3af;--line:#2a313a;--acc:#2dd4bf;--bad:#f87171}}
+:root{--bg:#f6f7f9;--fg:#15181d;--card:#fff;--mut:#6b7280;--line:#e5e7eb;--acc:#0f766e;--bad:#b91c1c;--warn:#b45309;--ok:#15803d}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1216;--fg:#e8eaed;--card:#171b21;--mut:#9aa3af;--line:#2a313a;--acc:#2dd4bf;--bad:#f87171;--warn:#fbbf24;--ok:#4ade80}}
 *{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card);flex-wrap:wrap}
-header h1{font-size:16px;margin:0;flex:1}
-main{display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 53px)}
-@media(max-width:760px){main{grid-template-columns:1fr;height:auto}}
-#list{overflow:auto;border-right:1px solid var(--line)}
-.row{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}.row:hover,.row.sel{background:var(--card)}
-.row small{color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tag{font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid var(--line)}.tag.HUMAN_PENDING{color:var(--bad);border-color:var(--bad)}.tag.HUMAN{color:var(--acc);border-color:var(--acc)}
+header{display:flex;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card);flex-wrap:wrap}
+header h1{font-size:15px;margin:0;flex:1 1 auto;min-width:150px}
+#stats{color:var(--mut);font-size:12px}
+#whoami{font-size:12px;color:var(--mut)}
+.pill{font-size:12px;padding:2px 9px;border-radius:9px;border:1px solid var(--line);white-space:nowrap}
+.pill.on{color:var(--ok);border-color:var(--ok)}.pill.off{color:var(--bad);border-color:var(--bad)}
+.pill.meta-no{color:var(--warn);border-color:var(--warn)}
+.role{text-transform:uppercase;letter-spacing:.03em}
+nav button[aria-pressed="true"]{background:var(--acc);color:#fff;border-color:var(--acc)}
+#banner{display:none;padding:8px 16px;background:var(--bad);color:#fff;font-size:13px}
+#banner.show{display:block}
+main{display:grid;grid-template-columns:340px 1fr;height:calc(100vh - 54px)}
+#listwrap{display:flex;flex-direction:column;border-right:1px solid var(--line);min-height:0}
+#filters{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--card)}
+#filters input,#filters select{padding:5px 8px;font-size:13px}
+#search{flex:1 1 100%}
+#list{overflow:auto;flex:1}
+.row{display:block;width:100%;text-align:left;padding:10px 14px;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;font:inherit}
+.row:hover,.row.sel{background:var(--bg)}
+.row:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.row small{color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.tag{font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid var(--line);vertical-align:middle}
+.tag.AI{color:var(--acc);border-color:var(--acc)}.tag.HUMAN_PENDING{color:var(--warn);border-color:var(--warn)}
+.tag.HUMAN{color:var(--ok);border-color:var(--ok)}.tag.PAUSED{color:var(--bad);border-color:var(--bad)}
+.tag.CLOSED{color:var(--mut)}.tag.SNOOZED{color:var(--warn);border-color:var(--warn)}
 #conv{display:flex;flex-direction:column;min-height:300px}
+#convhead{display:none;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);align-items:center;gap:8px;flex-wrap:wrap}
+#convhead.show{display:flex}
+#assignee{font-size:12px;color:var(--mut)}
+#back{display:none}
 #msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
 .m{max-width:75%;padding:8px 11px;border-radius:12px;background:var(--card);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word}
-.m.OUT{align-self:flex-end;background:var(--acc);color:#fff;border-color:var(--acc)}.m small{display:block;opacity:.7;font-size:11px}
-#bar{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);flex-wrap:wrap}
-input,button,textarea{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.m.OUT{align-self:flex-end;background:var(--acc);color:#fff;border-color:var(--acc)}
+.m small{display:block;opacity:.75;font-size:11px;margin-top:3px}
+.empty{color:var(--mut);padding:10px}
+#notespanel{display:none;border-top:1px dashed var(--line);padding:8px 14px;max-height:30%;overflow:auto;background:var(--bg)}
+#notespanel.show{display:block}
+.note{font-size:13px;padding:6px 8px;margin:4px 0;border:1px dashed var(--warn);border-radius:8px;white-space:pre-wrap;word-break:break-word}
+.note small{display:block;color:var(--mut);font-size:11px}
+#bar{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);flex-wrap:wrap;align-items:center}
+#hint{flex-basis:100%;color:var(--mut);font-size:12px;min-height:1em}
+input,button,textarea,select{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
 button{cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var(--acc)}button.d{background:var(--bad);color:#fff;border-color:var(--bad)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 #text{flex:1;min-width:140px}
+#spin{display:none;width:14px;height:14px;border:2px solid var(--mut);border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+#spin.show{display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#spin{animation:none}}
+/* knowledge view */
+#knowledge-view{display:none;padding:14px;gap:16px;grid-template-columns:1fr 1fr}
+#knowledge-view.show{display:grid}
+#orders-view,#analytics-view{display:none;padding:14px;overflow:auto;height:calc(100vh - 54px)}
+#orders-view.show,#analytics-view.show{display:block}
+.ordrow{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;background:var(--card);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ordrow .grow{flex:1;min-width:120px}
+.tag.DRAFT{color:var(--warn);border-color:var(--warn)}.tag.CONFIRMED{color:var(--ok);border-color:var(--ok)}.tag.CANCELLED{color:var(--mut)}
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat b{font-size:22px;display:block}.stat small{color:var(--mut)}
+#knowledge-view h3{margin:0 0 8px;font-size:14px}
+.kcol{min-width:0}
+#k-list .krow{padding:7px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer;background:var(--card)}
+#k-content{width:100%;min-height:140px}#k-title,#k-category{width:100%;margin-bottom:6px}
+#k-warnings{color:var(--warn);font-size:12px;min-height:1em;margin:6px 0}
+#v-data{width:100%;min-height:90px}
+#k-previewbox{white-space:pre-wrap;word-break:break-word;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;max-height:40vh;overflow:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+/* login */
+#login{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:var(--bg);z-index:10}
+#login.show{display:flex}
+#login form{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;width:320px;max-width:92vw;display:flex;flex-direction:column;gap:10px}
+#login h2{margin:0 0 4px;font-size:18px}#login input{width:100%}#loginerr{color:var(--bad);font-size:13px;min-height:1em}
+.hidden{display:none!important}
+@media(max-width:760px){main{grid-template-columns:1fr;height:auto}#listwrap{border-right:0}main.detail #listwrap{display:none}main:not(.detail) #conv{display:none}#back{display:inline-block}#knowledge-view.show{grid-template-columns:1fr}}
 </style></head><body>
-<header><h1>VisionPro WhatsApp AI Agent</h1><span id="stats"></span><span id="ai"></span><button id="toggle"></button></header>
-<main><div id="list"></div>
-<div id="conv"><div id="msgs"><p style="color:var(--mut);padding:8px">Select a conversation.</p></div>
-<div id="bar"><button id="take">Take over</button><button id="ret">Return to AI</button><input id="text" placeholder="Message (human)"><button class="p" id="send">Send</button></div></div></main>
+<div id="login"><form id="loginform" aria-label="Sign in">
+  <h2>VisionPro Admin</h2>
+  <label for="login-user">Username</label><input id="login-user" autocomplete="username" required>
+  <label for="login-pass">Password</label><input id="login-pass" type="password" autocomplete="current-password" required>
+  <button class="p" id="login-btn" type="submit">Sign in</button>
+  <div id="loginerr" role="alert" aria-live="assertive"></div>
+</form></div>
+
+<div id="app" class="hidden">
+<header>
+  <h1>VisionPro WhatsApp AI Agent</h1>
+  <nav aria-label="Views"><button id="nav-inbox" aria-pressed="true">Inbox</button><button id="nav-orders" aria-pressed="false">Orders</button><button id="nav-analytics" aria-pressed="false">Analytics</button><button id="nav-knowledge" aria-pressed="false">Knowledge</button></nav>
+  <span id="spin" role="status" aria-label="Loading"></span>
+  <span id="stats" aria-live="polite"></span>
+  <span id="meta" class="pill"></span>
+  <span id="ai" class="pill" aria-live="polite"></span>
+  <button id="toggle" aria-label="Toggle AI agent"></button>
+  <span id="whoami"></span>
+  <button id="logout" aria-label="Sign out">Sign out</button>
+</header>
+<div id="banner" role="alert" aria-live="assertive"></div>
+
+<main id="inbox-view" aria-label="Conversations">
+  <div id="listwrap">
+    <div id="filters" role="search">
+      <input id="search" placeholder="Search name, number or message…" aria-label="Search conversations">
+      <select id="f-status" aria-label="Filter by status"><option value="">All statuses</option><option value="OPEN">Open</option><option value="SNOOZED">Snoozed</option><option value="CLOSED">Closed</option></select>
+      <select id="f-mode" aria-label="Filter by mode"><option value="">All modes</option><option value="AI">AI</option><option value="HUMAN_PENDING">Awaiting human</option><option value="HUMAN">Human</option><option value="PAUSED">Paused</option></select>
+      <select id="f-assignee" aria-label="Filter by assignee"><option value="">All assignees</option><option value="me">My conversations</option><option value="unassigned">Unassigned</option></select>
+    </div>
+    <div id="list" role="list" aria-label="Conversation list"><p class="empty">Loading…</p></div>
+  </div>
+  <div id="conv">
+    <div id="convhead">
+      <button id="back" aria-label="Back to conversation list">← Back</button>
+      <strong id="convname"></strong>
+      <span id="convmode" class="tag"></span>
+      <select id="cstatus" aria-label="Conversation status"><option value="OPEN">Open</option><option value="SNOOZED">Snoozed</option><option value="CLOSED">Closed</option></select>
+      <span id="assignee"></span>
+      <button id="assign">Assign to me</button>
+      <button id="notesbtn" aria-expanded="false" aria-controls="notespanel">Notes</button>
+    </div>
+    <div id="msgs" aria-live="polite"><p class="empty">Select a conversation.</p></div>
+    <div id="notespanel" aria-label="Internal notes">
+      <div id="noteslist"></div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="note-input" placeholder="Internal note (not sent to the customer)" aria-label="Add internal note" style="flex:1">
+        <button id="note-add">Add note</button>
+      </div>
+    </div>
+    <div id="bar">
+      <button id="take">Take over</button>
+      <button id="ret">Return to AI</button>
+      <label for="text" style="position:absolute;left:-9999px">Message to send as a human agent</label>
+      <input id="text" placeholder="Message (sent as human)" autocomplete="off" disabled>
+      <button class="p" id="send" disabled>Send</button>
+      <span id="tmplwrap" class="hidden" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <select id="tmplsel" aria-label="Approved template"></select>
+        <input id="tmplvars" placeholder="Variables (comma-separated)" aria-label="Template variables">
+        <button class="p" id="tmplsend">Send template</button>
+      </span>
+      <span id="hint"></span>
+    </div>
+  </div>
+</main>
+
+<div id="knowledge-view" aria-label="Company knowledge">
+  <div class="kcol">
+    <div class="card"><h3>Articles</h3><button id="k-new">+ New article</button><div id="k-list"></div></div>
+  </div>
+  <div class="kcol">
+    <div class="card"><h3>Editor</h3>
+      <input id="k-title" placeholder="Title" aria-label="Article title">
+      <input id="k-category" placeholder="Category (optional)" aria-label="Category">
+      <textarea id="k-content" placeholder="Content" aria-label="Article content"></textarea>
+      <div id="k-warnings" role="status" aria-live="polite"></div>
+      <label for="k-status">Status</label>
+      <select id="k-status"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select>
+      <div style="margin-top:8px;display:flex;gap:6px"><button class="p" id="k-save">Save</button><button class="d" id="k-archive">Archive</button></div>
+    </div>
+    <div class="card"><h3>Hassaniya vocabulary — bulk import</h3>
+      <select id="v-format"><option value="json">JSON</option><option value="csv">CSV</option></select>
+      <textarea id="v-data" placeholder='JSON: [{"term":"...","alternates":["..."],"meaning":"..."}]  — or CSV with header: term,alternates,language,meaning,examples' aria-label="Vocabulary import data"></textarea>
+      <button id="v-import">Import</button><div id="v-result" role="status" aria-live="polite"></div>
+    </div>
+    <div class="card"><h3>AI prompt preview</h3>
+      <button id="k-preview">Preview the agent prompt</button>
+      <pre id="k-previewbox" class="hidden"></pre>
+    </div>
+  </div>
+</div>
+
+<div id="orders-view" aria-label="Orders and business setup">
+  <div class="card"><h3>Orders</h3>
+    <select id="o-filter" aria-label="Filter orders by status"><option value="">All</option><option value="DRAFT">Draft</option><option value="CONFIRMED">Confirmed</option><option value="CANCELLED">Cancelled</option></select>
+    <div id="o-list" style="margin-top:8px"></div>
+  </div>
+  <div class="card" id="catalog-card"><h3>Catalog — add product</h3>
+    <input id="p-sku" placeholder="SKU" aria-label="SKU"> <input id="p-name" placeholder="Name" aria-label="Name">
+    <input id="p-amount" type="number" placeholder="Price" aria-label="Price"> <input id="p-qty" type="number" placeholder="Stock" aria-label="Stock">
+    <button id="p-add">Add product</button><div id="p-result" role="status" aria-live="polite"></div>
+    <div id="p-list" style="margin-top:8px"></div>
+  </div>
+  <div class="card" id="templates-card"><h3>Approved templates</h3>
+    <input id="t-name" placeholder="Label" aria-label="Template label"> <input id="t-meta" placeholder="Meta template name" aria-label="Meta template name">
+    <input id="t-lang" placeholder="Language (e.g. fr)" aria-label="Language"> <input id="t-vars" type="number" placeholder="# variables" aria-label="Variable count">
+    <input id="t-body" placeholder="Body preview with {{1}}" aria-label="Body preview" style="width:100%;margin-top:6px">
+    <button id="t-add">Add template</button><div id="t-result" role="status" aria-live="polite"></div>
+    <div id="t-list" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<div id="analytics-view" aria-label="Operational analytics">
+  <h3 style="margin:0 0 10px">Operational analytics <small style="color:var(--mut)">(last 7 days)</small></h3>
+  <div id="a-stats" class="statgrid"></div>
+  <div class="card"><h3>Daily inbound volume</h3><div id="a-volume"></div></div>
+  <div class="card"><h3>Delivery status</h3><div id="a-delivery"></div></div>
+</div>
+</div>
 <script>
-let cur=null,ai=true;
+const WINDOW_MS=24*60*60*1000;
+let me=null,cur=null,curMode=null,curAssignee=null,curStatus='OPEN',windowOpen=false,ai=true,busy=0,act=0,poll=null,templatesCache=[];
+let view='inbox', kcur=null;
+const filters={q:'',status:'',mode:'',assignee:''};
 const $=id=>document.getElementById(id);
-const api=(p,o)=>fetch(p,{headers:{'Content-Type':'application/json'},...o}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
+const can=p=>!!(me&&me.permissions&&me.permissions.includes(p));
+function setBusy(d){busy=Math.max(0,busy+d);$('spin').classList.toggle('show',busy>0)}
+function showError(msg){const b=$('banner');b.textContent='⚠ '+msg;b.classList.add('show');clearTimeout(showError._t);showError._t=setTimeout(()=>b.classList.remove('show'),6000)}
+const api=(p,o={})=>{setBusy(1);const method=(o.method||'GET').toUpperCase();const headers={'Content-Type':'application/json',...(o.headers||{})};
+  if(method!=='GET'&&me&&me.csrf)headers['X-CSRF-Token']=me.csrf;
+  return fetch(p,{credentials:'same-origin',...o,headers}).then(async r=>{
+    if(r.status===401){showLogin();throw new Error('session expired — sign in again')}
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j
+  }).finally(()=>setBusy(-1))};
 const post=(p,b)=>api(p,{method:'POST',body:JSON.stringify(b||{})});
+const put=(p,b)=>api(p,{method:'PUT',body:JSON.stringify(b||{})});
+const del=p=>api(p,{method:'DELETE'});
 function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
+
+// ---- auth ----
+function showLogin(){me=null;if(poll){clearInterval(poll);poll=null}$('app').classList.add('hidden');$('login').classList.add('show');$('login-user').focus()}
+async function boot(){try{const r=await fetch('/api/me',{credentials:'same-origin'});if(!r.ok)return showLogin();me=await r.json();startApp()}catch{showLogin()}}
+$('loginform').addEventListener('submit',async e=>{e.preventDefault();$('loginerr').textContent='';
+  const username=$('login-user').value.trim(),password=$('login-pass').value;
+  try{const r=await fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+    if(r.status===429){$('loginerr').textContent='Too many attempts. Wait a few minutes.';return}
+    const j=await r.json().catch(()=>({}));if(!r.ok){$('loginerr').textContent='Invalid credentials';return}
+    me=j;$('login-pass').value='';startApp()}catch{$('loginerr').textContent='Sign-in failed'}});
+$('logout').onclick=async()=>{try{await post('/api/auth/logout')}catch{}showLogin()};
+
+function startApp(){
+  $('login').classList.remove('show');$('app').classList.remove('hidden');
+  $('whoami').textContent=me.user.username+' ';$('whoami').append(el('span','pill role',me.user.role));
+  $('toggle').style.display=can('manage_settings')?'':'none';
+  $('nav-knowledge').style.display=can('manage_knowledge')?'':'none';
+  $('catalog-card').style.display=can('manage_settings')?'':'none';
+  $('templates-card').style.display=can('manage_settings')?'':'none';
+  if(can('manage_users'))populateAssignees();
+  loadTemplates();
+  setView('inbox');loadList();
+  if(poll)clearInterval(poll);
+  poll=setInterval(()=>{if(view==='inbox'){loadList();if(cur)loadConv()}},5000);
+}
+function setView(v){view=v;
+  for(const n of ['inbox','orders','analytics','knowledge'])$('nav-'+n).setAttribute('aria-pressed',String(v===n));
+  $('inbox-view').style.display=v==='inbox'?'':'none';
+  $('knowledge-view').classList.toggle('show',v==='knowledge');
+  $('orders-view').classList.toggle('show',v==='orders');
+  $('analytics-view').classList.toggle('show',v==='analytics');
+  if(v==='knowledge')loadKnowledge();
+  if(v==='orders')loadOrders();
+  if(v==='analytics')loadAnalytics();
+}
+$('nav-inbox').onclick=()=>setView('inbox');
+$('nav-orders').onclick=()=>setView('orders');
+$('nav-analytics').onclick=()=>setView('analytics');
+$('nav-knowledge').onclick=()=>{if(can('manage_knowledge'))setView('knowledge')};
+
+async function populateAssignees(){try{const us=await api('/api/users');const sel=$('f-assignee');
+  for(const u of us.filter(x=>x.active)){const o=el('option','',`${u.username} (${u.role})`);o.value=String(u.id);sel.append(o)}}catch{}}
+
+// ---- inbox ----
+function listUrl(){const p=new URLSearchParams();if(filters.q)p.set('q',filters.q);if(filters.status)p.set('status',filters.status);if(filters.mode)p.set('mode',filters.mode);if(filters.assignee)p.set('assignee',filters.assignee);const s=p.toString();return '/api/conversations'+(s?('?'+s):'')}
+const onSearch=debounce(()=>{filters.q=$('search').value.trim();loadList()},300);
+$('search').addEventListener('input',onSearch);
+$('f-status').onchange=()=>{filters.status=$('f-status').value;loadList()};
+$('f-mode').onchange=()=>{filters.mode=$('f-mode').value;loadList()};
+$('f-assignee').onchange=()=>{filters.assignee=$('f-assignee').value;loadList()};
+
 async function loadList(){
-  const [rows,s,st]=await Promise.all([api('/api/conversations'),api('/api/agent-settings'),api('/api/stats')]);
-  ai=s.ai_enabled;$('ai').textContent=ai?'AI: ON':'AI: PAUSED';$('toggle').textContent=ai?'PAUSE AI':'Resume AI';$('toggle').className=ai?'d':'p';
+  let rows,s,st;
+  try{[rows,s,st]=await Promise.all([api(listUrl()),api('/api/agent-settings'),api('/api/stats')])}
+  catch(e){if(me)showError('Could not load dashboard: '+e.message);return}
+  ai=s.ai_enabled;$('ai').textContent=ai?'AI: ON':'AI: PAUSED';$('ai').className='pill '+(ai?'on':'off');
+  $('toggle').textContent=ai?'Pause AI':'Resume AI';$('toggle').className=ai?'d':'p';
+  $('meta').textContent=s.meta_configured?'Meta: configured':'Meta: not configured';$('meta').className='pill'+(s.meta_configured?'':' meta-no');
   $('stats').textContent=`today: ${st.messages_today} msgs · ${st.handoffs_today} handoffs · ${st.failed_today} failed`;
   const l=$('list');l.replaceChildren();
-  for(const r of rows){const d=el('div','row'+(r.id===cur?' sel':''));
-    d.append(el('b','',r.display_name||r.wa_id),document.createTextNode(' '),el('span','tag '+r.mode,r.mode),el('small','',r.handoff_reason?('⚠ '+r.handoff_reason):(r.last_text||'')));
-    d.onclick=()=>{cur=r.id;loadList();loadConv()};l.append(d)}
+  if(!rows.length){l.append(el('p','empty','No conversations match.'));return}
+  for(const r of rows){
+    const d=el('button','row'+(r.id===cur?' sel':''));d.setAttribute('role','listitem');
+    d.setAttribute('aria-label',`Conversation with ${r.display_name||r.wa_id}, mode ${r.mode}, status ${r.status}${r.assigned_user?', assigned to '+r.assigned_user:''}`);
+    const line=el('div');line.append(el('b','',r.display_name||r.wa_id),document.createTextNode(' '),el('span','tag '+r.mode,r.mode),document.createTextNode(' '),el('span','tag '+r.status,r.status));
+    d.append(line,el('small','',r.handoff_reason?('⚠ '+r.handoff_reason):(r.last_text||'—')));
+    d.onclick=()=>select(r);l.append(d);
+  }
 }
+function select(r){cur=r.id;curMode=r.mode;curStatus=r.status;curAssignee=r.assigned_user||null;
+  document.querySelector('#inbox-view').classList.add('detail');$('convhead').classList.add('show');
+  $('notespanel').classList.remove('show');$('notesbtn').setAttribute('aria-expanded','false');
+  loadList();loadConv()}
+$('back').onclick=()=>{cur=null;document.querySelector('#inbox-view').classList.remove('detail');$('convhead').classList.remove('show');loadList()};
+
 async function loadConv(){
-  if(!cur)return;const rows=await api('/api/conversations/'+cur);const m=$('msgs');m.replaceChildren();
-  for(const r of rows){const d=el('div','m '+r.direction,r.text||r.transcription||('['+r.message_type+']'));
+  if(!cur)return;let rows;
+  try{rows=await api('/api/conversations/'+cur)}catch(e){if(me)showError('Could not load conversation: '+e.message);return}
+  const m=$('msgs');m.replaceChildren();if(!rows.length)m.append(el('p','empty','No messages.'));
+  let lastIn=null;
+  for(const r of rows){if(r.direction==='IN')lastIn=r.created_at;
+    const d=el('div','m '+r.direction,r.text||r.transcription||('['+r.message_type+']'));
     d.append(el('small','',`${r.sender_type}${r.message_type==='AUDIO'?' (voice → transcript)':''} · ${new Date(r.created_at).toLocaleTimeString()}${r.delivery_status?' · '+r.delivery_status:''}${r.error?' · ⚠ '+r.error:''}`));m.append(d)}
   m.scrollTop=m.scrollHeight;
+  windowOpen=!!lastIn&&(Date.now()-new Date(lastIn).getTime()<WINDOW_MS);
+  $('convname').textContent=(document.querySelector('.row.sel b')?.textContent)||('#'+cur);
+  $('convmode').textContent=curMode||'';$('convmode').className='tag '+(curMode||'');
+  $('cstatus').value=curStatus||'OPEN';
+  $('assignee').textContent=curAssignee?('· '+curAssignee):'· unassigned';
+  if($('notespanel').classList.contains('show'))loadNotes();
+  updateControls();
 }
-$('toggle').onclick=async()=>{await post(ai?'/api/agent/pause':'/api/agent/resume');loadList()};
-$('take').onclick=async()=>{if(cur){await post(`/api/conversations/${cur}/takeover`);loadList()}};
-$('ret').onclick=async()=>{if(cur&&confirm('Return this conversation to the AI?')){await post(`/api/conversations/${cur}/return-to-ai`);loadList()}};
-$('send').onclick=async()=>{const t=$('text').value.trim();if(!cur||!t)return;try{await post(`/api/conversations/${cur}/messages`,{text:t});$('text').value='';loadConv()}catch(e){alert(e.message)}};
-loadList();setInterval(()=>{loadList();loadConv()},5000);
+function updateControls(){
+  const sel=!!cur,inflight=act>0,handle=can('handle_conversations');
+  $('take').disabled=!sel||inflight||!handle||curMode==='HUMAN';
+  $('ret').disabled=!sel||inflight||!handle||curMode==='AI';
+  $('assign').disabled=!sel||inflight||!handle;$('cstatus').disabled=!sel||inflight||!handle;
+  $('note-add').disabled=!sel||inflight||!handle;$('note-input').disabled=!sel||inflight||!handle;
+  const canSend=sel&&windowOpen&&!inflight&&handle;$('text').disabled=!canSend;$('send').disabled=!canSend;
+  $('hint').textContent=!sel?'':(!handle?'Read-only: you do not have permission to reply.':(!windowOpen?'24h window closed — send an approved template below.':(curMode==='AI'?'AI is handling this chat — take over before replying as a human.':'')));
+  // Outside the 24h window a handler sends an approved template instead of free-form text.
+  const showTmpl=sel&&!windowOpen&&handle;
+  $('tmplwrap').classList.toggle('hidden',!showTmpl);
+  if(showTmpl&&$('tmplsel').dataset.n!==String(templatesCache.length)){
+    const ts=$('tmplsel');ts.replaceChildren();
+    for(const t of templatesCache.filter(x=>x.status==='approved')){const o=el('option','',`${t.name} [${t.language}] · ${t.variables} var(s)`);o.value=String(t.id);ts.append(o)}
+    ts.dataset.n=String(templatesCache.length);
+  }
+  $('tmplsend').disabled=inflight;
+}
+function action(fn){act++;updateControls();Promise.resolve().then(fn).catch(e=>showError(e.message)).finally(()=>{act--;updateControls()})}
+$('toggle').onclick=()=>action(async()=>{await post(ai?'/api/agent/pause':'/api/agent/resume');await loadList()});
+$('take').onclick=()=>{if(cur)action(async()=>{await post(`/api/conversations/${cur}/takeover`);curMode='HUMAN';curAssignee=me.user.username;await loadList();await loadConv()})};
+$('ret').onclick=()=>{if(cur&&confirm('Return this conversation to the AI?'))action(async()=>{await post(`/api/conversations/${cur}/return-to-ai`);curMode='AI';curAssignee=null;await loadList();await loadConv()})};
+$('assign').onclick=()=>{if(cur)action(async()=>{await post(`/api/conversations/${cur}/assign`,{self:true});curAssignee=me.user.username;await loadConv()})};
+$('cstatus').onchange=()=>{if(cur){const v=$('cstatus').value;action(async()=>{await post(`/api/conversations/${cur}/status`,{status:v});curStatus=v;await loadList()})}};
+$('notesbtn').onclick=()=>{const p=$('notespanel');const show=!p.classList.contains('show');p.classList.toggle('show',show);$('notesbtn').setAttribute('aria-expanded',String(show));if(show)loadNotes()};
+async function loadNotes(){if(!cur)return;try{const ns=await api(`/api/conversations/${cur}/notes`);const l=$('noteslist');l.replaceChildren();
+  if(!ns.length)l.append(el('p','empty','No internal notes.'));
+  for(const n of ns){const d=el('div','note',n.body);d.append(el('small','',`${n.author} · ${new Date(n.created_at).toLocaleString()}`));l.append(d)}}catch(e){showError(e.message)}}
+$('note-add').onclick=()=>{const t=$('note-input').value.trim();if(!cur||!t)return;action(async()=>{await post(`/api/conversations/${cur}/notes`,{body:t});$('note-input').value='';await loadNotes()})};
+function doSend(){const t=$('text').value.trim();if(!cur||!t)return;action(async()=>{await post(`/api/conversations/${cur}/messages`,{text:t});$('text').value='';await loadConv()})}
+$('send').onclick=doSend;$('text').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend()}});
+
+// ---- knowledge ----
+async function loadKnowledge(){try{const arts=await api('/api/knowledge');const l=$('k-list');l.replaceChildren();
+  if(!arts.length)l.append(el('p','empty','No articles yet.'));
+  for(const a of arts){const d=el('div','krow');d.append(el('b','',a.title),document.createTextNode(' '),el('span','tag '+(a.status==='published'?'AI':a.status==='archived'?'CLOSED':'SNOOZED'),a.status));
+    if(a.volatile_flag)d.append(document.createTextNode(' '),el('span','tag HUMAN_PENDING','volatile'));
+    d.onclick=()=>editArticle(a);l.append(d)}}catch(e){showError(e.message)}}
+function editArticle(a){kcur=a.id;$('k-title').value=a.title;$('k-category').value=a.category||'';$('k-content').value=a.content;$('k-status').value=a.status;lintNow()}
+$('k-new').onclick=()=>{kcur=null;$('k-title').value='';$('k-category').value='';$('k-content').value='';$('k-status').value='draft';$('k-warnings').textContent=''};
+const lintNow=debounce(async()=>{const content=$('k-content').value;if(!content){$('k-warnings').textContent='';return}
+  try{const r=await post('/api/knowledge/lint',{content});$('k-warnings').textContent=r.warnings.length?('⚠ volatile content: '+r.warnings.map(w=>w.type).join(', ')+' — route these to a tool/human; do not state them as fixed facts.'):''}catch{}},400);
+$('k-content').addEventListener('input',lintNow);
+$('k-save').onclick=()=>action(async()=>{const body={title:$('k-title').value.trim(),content:$('k-content').value,category:$('k-category').value.trim()||null,status:$('k-status').value};
+  if(!body.title||!body.content){showError('Title and content required');return}
+  const r=kcur?await put('/api/knowledge/'+kcur,body):await post('/api/knowledge',body);kcur=r.id;
+  $('k-warnings').textContent=r.warnings&&r.warnings.length?('⚠ volatile: '+r.warnings.map(w=>w.type).join(', ')):'Saved.';await loadKnowledge()});
+$('k-archive').onclick=()=>{if(kcur&&confirm('Archive this article? It will no longer be used by the AI.'))action(async()=>{await del('/api/knowledge/'+kcur);kcur=null;$('k-new').click();await loadKnowledge()})};
+$('v-import').onclick=()=>action(async()=>{const r=await post('/api/vocabulary/import',{format:$('v-format').value,data:$('v-data').value});
+  $('v-result').textContent=`Imported ${r.inserted}${r.errors.length?(' · '+r.errors.length+' error(s): '+r.errors.slice(0,3).join('; ')):''}`});
+$('k-preview').onclick=()=>action(async()=>{const r=await api('/api/knowledge/prompt-preview');const box=$('k-previewbox');box.textContent=r.prompt;box.classList.remove('hidden')});
+
+// ---- orders / catalog / templates ----
+$('o-filter').onchange=()=>loadOrders();
+async function loadOrders(){try{
+  const st=$('o-filter').value;const orders=await api('/api/orders'+(st?('?status='+st):''));
+  const l=$('o-list');l.replaceChildren();
+  if(!orders.length)l.append(el('p','empty','No orders.'));
+  for(const o of orders){
+    const d=el('div','ordrow');
+    const items=(o.items||[]).map(it=>`${it.qty}× ${it.sku}`).join(', ');
+    d.append(el('b','','#'+o.id),el('span','tag '+o.status,o.status),el('span','grow',`${items} · ${o.total} ${o.currency}`));
+    if(o.status==='DRAFT'&&can('confirm_orders')){
+      const cf=el('button','p','Confirm');cf.onclick=()=>action(async()=>{await post(`/api/orders/${o.id}/confirm`);await loadOrders()});
+      const cn=el('button','d','Cancel');cn.onclick=()=>action(async()=>{await post(`/api/orders/${o.id}/cancel`);await loadOrders()});
+      d.append(cf,cn);
+    }
+    l.append(d);
+  }
+  loadProducts();loadTemplates();
+}catch(e){showError(e.message)}}
+$('p-add').onclick=()=>action(async()=>{
+  const body={sku:$('p-sku').value.trim(),name:$('p-name').value.trim(),amount:$('p-amount').value?Number($('p-amount').value):undefined,qty:$('p-qty').value?Number($('p-qty').value):undefined};
+  if(!body.sku||!body.name){showError('SKU and name required');return}
+  await post('/api/products',body);$('p-result').textContent='Added.';$('p-sku').value='';$('p-name').value='';$('p-amount').value='';$('p-qty').value='';await loadProducts()});
+async function loadProducts(){try{const ps=await api('/api/products');const l=$('p-list');l.replaceChildren();for(const p of ps)l.append(el('div','ordrow',`${p.sku} — ${p.name} · ${p.amount??'—'} ${p.currency||''} · stock ${p.qty??0}`))}catch{}}
+$('t-add').onclick=()=>action(async()=>{
+  const body={name:$('t-name').value.trim(),meta_template_name:$('t-meta').value.trim(),language:$('t-lang').value.trim(),variables:Number($('t-vars').value||0),body_preview:$('t-body').value.trim()};
+  if(!body.name||!body.meta_template_name||!body.language||!body.body_preview){showError('All template fields required');return}
+  await post('/api/templates',body);$('t-result').textContent='Added.';await loadTemplates()});
+async function loadTemplates(){try{templatesCache=await api('/api/templates');const l=$('t-list');l.replaceChildren();for(const t of templatesCache)l.append(el('div','ordrow',`${t.name} [${t.language}] · ${t.meta_template_name} · ${t.variables} var(s) · ${t.status}`));if(cur)updateControls()}catch{}}
+$('tmplsend').onclick=()=>{if(!cur)return;const id=$('tmplsel').value;const vars=$('tmplvars').value.split(',').map(s=>s.trim()).filter(Boolean);
+  action(async()=>{await post(`/api/conversations/${cur}/template`,{template_id:Number(id),variables:vars});$('tmplvars').value='';await loadConv()})};
+
+// ---- analytics ----
+async function loadAnalytics(){try{const r=await api('/api/reporting?days=7');
+  const stat=(label,val)=>{const d=el('div','stat');d.append(el('b','',String(val)),el('small','',label));return d};
+  const totalIn=(r.volume||[]).reduce((a,x)=>a+x.inbound,0);
+  const s=$('a-stats');s.replaceChildren();
+  s.append(stat('Inbound (7d)',totalIn),stat('Handoffs',r.handoffs),stat('Failed messages',r.failed.failed_messages),stat('Failed STT',r.failed.failed_stt),stat('Avg first response (s)',r.avg_first_response_secs??'—'));
+  const v=$('a-volume');v.replaceChildren();if(!(r.volume||[]).length)v.append(el('p','empty','No data yet.'));for(const x of r.volume)v.append(el('div','ordrow',`${new Date(x.day).toLocaleDateString()} — ${x.inbound} inbound`));
+  const dl=$('a-delivery');dl.replaceChildren();if(!(r.delivery||[]).length)dl.append(el('p','empty','No data yet.'));for(const x of r.delivery)dl.append(el('div','ordrow',`${x.delivery_status}: ${x.n}`));
+}catch(e){showError(e.message)}}
+
+boot();
 </script></body></html>

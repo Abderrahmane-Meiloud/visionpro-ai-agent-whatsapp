@@ -1,12 +1,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { cfg } from './config';
 
 export const pool = new Pool({ connectionString: cfg.databaseUrl, max: 10 });
 
 export async function q<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
   return (await pool.query(sql, params as any[])).rows as T[];
+}
+
+/** Run `fn` inside a single transaction (BEGIN/COMMIT, ROLLBACK on throw). Used for the
+ *  transactional order confirmation (revalidate price/stock + decrement + flip state atomically). */
+export async function tx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    const r = await fn(c);
+    await c.query('COMMIT');
+    return r;
+  } catch (e) {
+    await c.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    c.release();
+  }
 }
 
 export async function migrate() {

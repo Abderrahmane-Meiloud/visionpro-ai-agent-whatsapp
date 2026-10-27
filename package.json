@@ -6,20 +6,29 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && cp src/schema.sql dist/ && mkdir -p dist/modules/admin && cp src/modules/admin/admin.html dist/modules/admin/",
     "start": "node dist/index.js",
+    "migrate": "node dist/migrate.js",
+    "migrate:dev": "node --import tsx src/migrate.ts",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:browser": "playwright test",
     "typecheck": "tsc --noEmit",
     "smoke": "node --import tsx scripts/smoke.ts"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "express": "^5.1.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
+  },
+  "overrides": {
+    "body-parser": "^2.4.0"
   }
 }

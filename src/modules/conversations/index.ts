@@ -1,5 +1,6 @@
 import { cfg } from '../../config';
-import { q, getSetting } from '../../db';
+import { q, getSetting, audit } from '../../db';
+import { log } from '../../log';
 import { runAgent, HANDOFF_TEXT } from '../agent';
 import { requestHandoff } from '../handoff';
 import { transcribe } from '../transcription';
@@ -23,14 +24,21 @@ export async function ingest(m: Inbound): Promise<void> {
   const conv = (await q(
     `INSERT INTO conversations(customer_id, last_inbound_at) VALUES($1, now())
      ON CONFLICT (customer_id) DO UPDATE SET last_message_at=now(), last_inbound_at=now()
-     RETURNING id`, [cust.id]))[0];
+     RETURNING id, status`, [cust.id]))[0];
 
   const type = m.type === 'text' ? 'TEXT' : m.type === 'audio' ? 'AUDIO' : m.type === 'image' ? 'IMAGE' : m.type === 'document' ? 'DOCUMENT' : 'SYSTEM';
   const ins = await q(
     `INSERT INTO messages(conversation_id, whatsapp_message_id, direction, sender_type, message_type, text, media_meta, processing_status)
      VALUES($1,$2,'IN','CUSTOMER',$3,$4,$5,'PENDING') ON CONFLICT (whatsapp_message_id) DO NOTHING RETURNING id`,
     [conv.id, m.messageId, type, m.text ?? null, JSON.stringify({ mediaId: m.mediaId, mime: m.mime, rawType: m.type })]);
-  if (!ins.length) return; // duplicate webhook: already handled
+  if (!ins.length) return; // duplicate webhook: already handled (also means no spurious reopen)
+  // Reopen policy: a genuinely new inbound reopens a CLOSED/SNOOZED conversation to OPEN. This only
+  // changes the inbox status — it never alters `mode` (HUMAN/PAUSED ownership + handoff are preserved)
+  // and the global AI pause is untouched. Audited.
+  if (conv.status && conv.status !== 'OPEN') {
+    await q(`UPDATE conversations SET status='OPEN', closed_at=NULL, snoozed_until=NULL WHERE id=$1`, [conv.id]);
+    await audit('SYSTEM', 'conversation.reopen', 'conversation', conv.id, { status: conv.status }, { status: 'OPEN' }, 'webhook');
+  }
   markRead(m.messageId);
   schedule(conv.id);
 }
@@ -39,7 +47,7 @@ export function schedule(conversationId: number, delay = cfg.debounceMs) {
   clearTimeout(timers.get(conversationId));
   timers.set(conversationId, setTimeout(() => {
     timers.delete(conversationId);
-    processConversation(conversationId).catch((e) => console.error('process failed', conversationId, e.message));
+    processConversation(conversationId).catch((e) => log.error('conversation.process_failed', { conversationId, err: e.message }));
   }, delay));
 }
 
@@ -85,7 +93,7 @@ async function processConversation(convId: number) {
           await q(`UPDATE messages SET transcription=$2 WHERE id=$1`, [b.id, t]);
           parts.push(t);
         } catch (e: any) {
-          console.error('stt failed', e.message);
+          log.warn('stt.failed', { conversationId: convId, messageId: b.id, err: e.message });
           await q(`UPDATE messages SET error=$2 WHERE id=$1`, [b.id, e.message.slice(0, 300)]);
           sttFailed = true;
         }

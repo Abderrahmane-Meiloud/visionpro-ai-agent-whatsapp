@@ -1,7 +1,12 @@
 # AI Agent Specification
 
 ## Default text model
-Use OpenAI GPT-6 Luna as the default cheap text model for routine WhatsApp support. Make the model configurable via environment/admin settings. Provide an optional fallback/escalation to GPT-6 Sol for cases that require stronger reasoning.
+Default is **`gpt-5.6-terra`** (configurable via `OPENAI_TEXT_MODEL`). This is the model OpenAI's own
+function-calling guide demonstrates for the Chat Completions + tools pattern the agent uses, so it is
+the verified-safe default. GPT-6 tiers (`gpt-6-luna` cheaper, `gpt-6-sol` stronger) exist and may be
+used via env override, but their tool-calling support on **Chat Completions** is not confirmed (GPT-6
+Astra / 6.1 Sol require the Responses API for tools) — validate with one live tool-calling call before
+switching the default. An optional fallback/escalation model is configurable via `OPENAI_TEXT_FALLBACK_MODEL`.
 
 Do not hard-code pricing assumptions into application logic; model pricing changes.
 
