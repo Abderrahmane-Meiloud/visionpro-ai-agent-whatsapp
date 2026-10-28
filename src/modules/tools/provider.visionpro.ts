@@ -12,11 +12,13 @@ import type { BusinessProvider, PriceInfo, Product } from './provider';
  *     price: { amount, currency } | null,
  *     stock: { qty, available } | null }
  *
- * Marketing OS currently has NO inventory column (see catalog.py docstring); stock comes back
- * null and `getStock()` therefore returns null → the registry dispatcher raises NO_STOCK_DATA
- * → the agent hands off ("I cannot confirm availability right now; a colleague will help"). This
- * is deliberate: the WhatsApp agent's "never invent stock" rule (src/modules/agent/index.ts
- * system prompt) is enforced by the data path, not just the prompt text.
+ * Stock reflects Marketing OS's real tracked quantity (products.stock_quantity) when the catalog
+ * endpoint reports one; a product nobody tracks a quantity for comes back `stock: null`, and
+ * `getStock()` then returns null → the registry dispatcher raises NO_STOCK_DATA → the agent
+ * hands off ("I cannot confirm availability right now; a colleague will help."). This path never
+ * fabricates a number — it either echoes Marketing OS's own real quantity or hands off, enforcing
+ * the WhatsApp agent's "never invent stock" rule (src/modules/agent/index.ts system prompt) at
+ * the data layer, not just the prompt text.
  *
  * ID handling: the Marketing OS catalog is UUID-keyed, but the agent's `Product.id` is a bigint
  * from the local Postgres schema. This module synthesizes a stable numeric id per SKU for the
@@ -131,11 +133,18 @@ export function makeVisionProBusinessProvider(opts: VisionProBusinessProviderOpt
       }
     },
 
-    async getStock(_productId: number): Promise<number | null> {
-      // Marketing OS currently has no inventory column: catalog.py returns stock: null on every
-      // row. Return null → the dispatcher raises NO_STOCK_DATA → `request_human_handoff`. See the
-      // module docstring on why we deliberately do not fabricate a number here.
-      return null;
+    async getStock(productId: number): Promise<number | null> {
+      const sku = idToSku.get(productId);
+      if (!sku) return null;
+      try {
+        const rows = await search({ sku });
+        const match = rows.find((r) => r.sku === sku);
+        // No tracked quantity for this product -> genuinely unknown, not zero. The dispatcher
+        // turns null into NO_STOCK_DATA -> request_human_handoff; see the module docstring.
+        return match?.stock?.qty ?? null;
+      } catch {
+        return null;
+      }
     },
   };
 }

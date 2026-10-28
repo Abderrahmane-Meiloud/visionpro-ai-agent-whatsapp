@@ -87,11 +87,39 @@ test('getPrice uses the synthetic id from a prior lookup', async () => {
   assert.equal(unknownPrice, null);
 });
 
-test('getStock always returns null (Marketing OS has no inventory column yet)', async () => {
+test('getStock returns null for a productId with no prior product lookup (no SKU to query)', async () => {
   const { fetch: f } = makeFakeFetch(() => ({ status: 200, body: [] }));
   const provider = makeVisionProBusinessProvider({ baseUrl: 'http://marketing.test', getAccessToken: STATIC_TOKEN, fetchImpl: f });
   assert.equal(await provider.getStock(1), null);
   assert.equal(await provider.getStock(2), null);
+});
+
+test('getStock returns the real tracked quantity when the catalog reports one', async () => {
+  const { fetch: f } = makeFakeFetch(() => ({
+    status: 200,
+    body: [{
+      sku: 'S1', name: 'Stocked', category: null, description: null, image_url: null,
+      price: null, stock: { qty: 5, available: true },
+    }],
+  }));
+  const provider = makeVisionProBusinessProvider({ baseUrl: 'http://marketing.test', getAccessToken: STATIC_TOKEN, fetchImpl: f });
+  const p = await provider.getProductBySku('S1');
+  assert.ok(p);
+  assert.equal(await provider.getStock(p!.id), 5);
+});
+
+test('getStock returns null when the catalog reports no tracked quantity for this product', async () => {
+  const { fetch: f } = makeFakeFetch(() => ({
+    status: 200,
+    body: [{
+      sku: 'S2', name: 'Untracked', category: null, description: null, image_url: null,
+      price: null, stock: null,
+    }],
+  }));
+  const provider = makeVisionProBusinessProvider({ baseUrl: 'http://marketing.test', getAccessToken: STATIC_TOKEN, fetchImpl: f });
+  const p = await provider.getProductBySku('S2');
+  assert.ok(p);
+  assert.equal(await provider.getStock(p!.id), null);
 });
 
 test('end-to-end: makeBusinessTools backed by VisionPro provider -> get_product + get_price succeed, check_stock hands off', async () => {
@@ -122,8 +150,8 @@ test('end-to-end: makeBusinessTools backed by VisionPro provider -> get_product 
   assert.equal(priced.ok, true);
   assert.deepEqual(priced.data, { sku: 'RUG-1', name: 'Carpet', amount: 500, currency: 'MRU' });
 
-  // No inventory data available -> dispatcher raises NO_STOCK_DATA -> system prompt turns this
-  // into request_human_handoff. Verified against tools/registry.ts:40-44.
+  // This product has no tracked quantity (stock: null) -> dispatcher raises NO_STOCK_DATA ->
+  // system prompt turns this into request_human_handoff. Verified against tools/registry.ts:40-44.
   const stock = await dispatch('check_stock', { sku: 'RUG-1' }, 1);
   assert.equal(stock.ok, false);
   assert.equal(stock.error_code, 'NO_STOCK_DATA');
