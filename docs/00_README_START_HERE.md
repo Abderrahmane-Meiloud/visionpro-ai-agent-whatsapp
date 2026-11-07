@@ -8,7 +8,7 @@ Build one production-quality AI agent for one WhatsApp Business number using onl
 This is **not a SaaS build**. It is one client deployment with clean configuration and abstractions so the same repository can later be copied for another client.
 
 ## Core principles
-1. Official Meta WhatsApp Business Platform / Cloud API only. Never use Evolution API, Baileys, WhatsApp Web automation, QR-session bots, browser emulation, or unofficial reverse-engineered libraries.
+1. Official Meta WhatsApp Business Platform / Cloud API only for the production, client-facing channel. Never use Evolution API, Baileys, WhatsApp Web automation, QR-session bots, browser emulation, or unofficial reverse-engineered libraries for that channel. **Scoped, owner-authorized exception:** an isolated, non-production Evolution API pilot transport exists purely for internal experimentation, gated off by default and refused outright if the app is ever booted with `NODE_ENV=production`. It is not a change to this principle for the real client channel — see `docs/26_EVOLUTION_PILOT.md` for its exact scope, and do not extend Evolution/Baileys usage beyond what that document authorizes.
 2. One agent core for text, voice notes, and later live calls.
 3. Hassaniya + French are first-class languages. Arabic and English must also be supported. Code-switching is expected.
 4. The model must never invent prices, stock, delivery status, balances, discounts, or completed actions.

@@ -12,6 +12,9 @@ header h1{font-size:15px;margin:0;flex:1 1 auto;min-width:150px}
 .pill{font-size:12px;padding:2px 9px;border-radius:9px;border:1px solid var(--line);white-space:nowrap}
 .pill.on{color:var(--ok);border-color:var(--ok)}.pill.off{color:var(--bad);border-color:var(--bad)}
 .pill.meta-no{color:var(--warn);border-color:var(--warn)}
+.tag.whatsapp_evolution_pilot{color:var(--warn);border-color:var(--warn)}
+.row.unread b{font-weight:800}.row.unread::before{content:'●';color:var(--acc);margin-right:4px}
+.ordrow.linked{background:var(--bg)}
 .role{text-transform:uppercase;letter-spacing:.03em}
 nav button[aria-pressed="true"]{background:var(--acc);color:#fff;border-color:var(--acc)}
 #banner{display:none;padding:8px 16px;background:var(--bad);color:#fff;font-size:13px}
@@ -97,6 +100,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <span id="spin" role="status" aria-label="Loading"></span>
   <span id="stats" aria-live="polite"></span>
   <span id="meta" class="pill"></span>
+  <span id="aiprov" class="pill" aria-live="polite"></span>
+  <span id="evopilot" class="pill" aria-live="polite"></span>
   <span id="ai" class="pill" aria-live="polite"></span>
   <button id="toggle" aria-label="Toggle AI agent"></button>
   <span id="whoami"></span>
@@ -111,6 +116,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <select id="f-status" aria-label="Filter by status"><option value="">All statuses</option><option value="OPEN">Open</option><option value="SNOOZED">Snoozed</option><option value="CLOSED">Closed</option></select>
       <select id="f-mode" aria-label="Filter by mode"><option value="">All modes</option><option value="AI">AI</option><option value="HUMAN_PENDING">Awaiting human</option><option value="HUMAN">Human</option><option value="PAUSED">Paused</option></select>
       <select id="f-assignee" aria-label="Filter by assignee"><option value="">All assignees</option><option value="me">My conversations</option><option value="unassigned">Unassigned</option></select>
+      <select id="f-channel" aria-label="Filter by channel"><option value="">All channels</option><option value="whatsapp">Meta (production)</option><option value="whatsapp_evolution_pilot">Evolution pilot</option></select>
     </div>
     <div id="list" role="list" aria-label="Conversation list"><p class="empty">Loading…</p></div>
   </div>
@@ -124,6 +130,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <button id="assign">Assign to me</button>
       <button id="notesbtn" aria-expanded="false" aria-controls="notespanel">Notes</button>
     </div>
+    <div id="convorders" aria-label="Linked orders" style="display:none;padding:6px 14px;border-bottom:1px dashed var(--line);font-size:12px"></div>
     <div id="msgs" aria-live="polite"><p class="empty">Select a conversation.</p></div>
     <div id="notespanel" aria-label="Internal notes">
       <div id="noteslist"></div>
@@ -203,9 +210,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 </div>
 <script>
 const WINDOW_MS=24*60*60*1000;
-let me=null,cur=null,curMode=null,curAssignee=null,curStatus='OPEN',windowOpen=false,ai=true,busy=0,act=0,poll=null,templatesCache=[];
+let me=null,cur=null,curMode=null,curAssignee=null,curStatus='OPEN',curChannel=null,windowOpen=false,ai=true,busy=0,act=0,poll=null,templatesCache=[],epStatus={};
 let view='inbox', kcur=null;
-const filters={q:'',status:'',mode:'',assignee:''};
+const filters={q:'',status:'',mode:'',assignee:'',channel:''};
 const $=id=>document.getElementById(id);
 const can=p=>!!(me&&me.permissions&&me.permissions.includes(p));
 function setBusy(d){busy=Math.max(0,busy+d);$('spin').classList.toggle('show',busy>0)}
@@ -265,12 +272,13 @@ async function populateAssignees(){try{const us=await api('/api/users');const se
   for(const u of us.filter(x=>x.active)){const o=el('option','',`${u.username} (${u.role})`);o.value=String(u.id);sel.append(o)}}catch{}}
 
 // ---- inbox ----
-function listUrl(){const p=new URLSearchParams();if(filters.q)p.set('q',filters.q);if(filters.status)p.set('status',filters.status);if(filters.mode)p.set('mode',filters.mode);if(filters.assignee)p.set('assignee',filters.assignee);const s=p.toString();return '/api/conversations'+(s?('?'+s):'')}
+function listUrl(){const p=new URLSearchParams();if(filters.q)p.set('q',filters.q);if(filters.status)p.set('status',filters.status);if(filters.mode)p.set('mode',filters.mode);if(filters.assignee)p.set('assignee',filters.assignee);if(filters.channel)p.set('channel',filters.channel);const s=p.toString();return '/api/conversations'+(s?('?'+s):'')}
 const onSearch=debounce(()=>{filters.q=$('search').value.trim();loadList()},300);
 $('search').addEventListener('input',onSearch);
 $('f-status').onchange=()=>{filters.status=$('f-status').value;loadList()};
 $('f-mode').onchange=()=>{filters.mode=$('f-mode').value;loadList()};
 $('f-assignee').onchange=()=>{filters.assignee=$('f-assignee').value;loadList()};
+$('f-channel').onchange=()=>{filters.channel=$('f-channel').value;loadList()};
 
 async function loadList(){
   let rows,s,st;
@@ -279,18 +287,26 @@ async function loadList(){
   ai=s.ai_enabled;$('ai').textContent=ai?'AI: ON':'AI: PAUSED';$('ai').className='pill '+(ai?'on':'off');
   $('toggle').textContent=ai?'Pause AI':'Resume AI';$('toggle').className=ai?'d':'p';
   $('meta').textContent=s.meta_configured?'Meta: configured':'Meta: not configured';$('meta').className='pill'+(s.meta_configured?'':' meta-no');
+  const ap=s.ai_provider||{};$('aiprov').textContent=ap.mock?'AI replies: MOCK (no real AI)':(ap.configured?'AI replies: real (OpenAI)':'AI replies: unconfigured');
+  $('aiprov').className='pill'+(ap.mock||!ap.configured?' meta-no':' on');
+  epStatus=s.evolution_pilot||{};const ep=epStatus;
+  const outboundNote=ep.configured&&!ep.simulation_mode?(ep.real_outbound_enabled?' · REAL SENDING ON':' · Real WhatsApp sending disabled'):'';
+  $('evopilot').textContent=!ep.configured?'Evolution: off':`Evolution: ${ep.simulation_mode?'SIMULATION':'LIVE'} · auto-reply ${ep.auto_reply_enabled?'ON ('+(ep.allowed_test_numbers_count??0)+' allowed)':'OFF'}${outboundNote}`;
+  $('evopilot').className='pill'+((!ep.configured)?'':(ep.simulation_mode?' on':(ep.real_outbound_enabled?' meta-no':' on')));
+  $('evopilot').title=!ep.configured?'':(ep.simulation_mode?'Simulation mode: all sends go to the local fake sink only.':(ep.real_outbound_enabled?'EVOLUTION_REAL_OUTBOUND_ENABLED=true: manual/AI replies can reach the real WhatsApp API.':'EVOLUTION_REAL_OUTBOUND_ENABLED=false: every real-send attempt (manual, AI, retry) is rejected before any real HTTP call.'));
   $('stats').textContent=`today: ${st.messages_today} msgs · ${st.handoffs_today} handoffs · ${st.failed_today} failed`;
   const l=$('list');l.replaceChildren();
   if(!rows.length){l.append(el('p','empty','No conversations match.'));return}
   for(const r of rows){
-    const d=el('button','row'+(r.id===cur?' sel':''));d.setAttribute('role','listitem');
-    d.setAttribute('aria-label',`Conversation with ${r.display_name||r.wa_id}, mode ${r.mode}, status ${r.status}${r.assigned_user?', assigned to '+r.assigned_user:''}`);
+    const d=el('button','row'+(r.id===cur?' sel':'')+(r.unread?' unread':''));d.setAttribute('role','listitem');
+    d.setAttribute('aria-label',`Conversation with ${r.display_name||r.wa_id}, mode ${r.mode}, status ${r.status}, channel ${r.channel}${r.unread?', unread':''}${r.assigned_user?', assigned to '+r.assigned_user:''}`);
     const line=el('div');line.append(el('b','',r.display_name||r.wa_id),document.createTextNode(' '),el('span','tag '+r.mode,r.mode),document.createTextNode(' '),el('span','tag '+r.status,r.status));
+    if(r.channel==='whatsapp_evolution_pilot')line.append(document.createTextNode(' '),el('span','tag whatsapp_evolution_pilot','PILOT'));
     d.append(line,el('small','',r.handoff_reason?('⚠ '+r.handoff_reason):(r.last_text||'—')));
     d.onclick=()=>select(r);l.append(d);
   }
 }
-function select(r){cur=r.id;curMode=r.mode;curStatus=r.status;curAssignee=r.assigned_user||null;
+function select(r){cur=r.id;curMode=r.mode;curStatus=r.status;curAssignee=r.assigned_user||null;curChannel=r.channel||null;
   document.querySelector('#inbox-view').classList.add('detail');$('convhead').classList.add('show');
   $('notespanel').classList.remove('show');$('notesbtn').setAttribute('aria-expanded','false');
   loadList();loadConv()}
@@ -303,8 +319,15 @@ async function loadConv(){
   let lastIn=null;
   for(const r of rows){if(r.direction==='IN')lastIn=r.created_at;
     const d=el('div','m '+r.direction,r.text||r.transcription||('['+r.message_type+']'));
-    d.append(el('small','',`${r.sender_type}${r.message_type==='AUDIO'?' (voice → transcript)':''} · ${new Date(r.created_at).toLocaleTimeString()}${r.delivery_status?' · '+r.delivery_status:''}${r.error?' · ⚠ '+r.error:''}`));m.append(d)}
+    d.append(el('small','',`${r.sender_type}${r.message_type==='AUDIO'?' (voice → transcript)':''} · ${new Date(r.created_at).toLocaleTimeString()}${r.delivery_status?' · '+r.delivery_status:''}${r.error?' · ⚠ '+r.error:''}`));
+    if(r.direction==='IN'&&r.processing_status==='FAILED'&&can('handle_conversations')){
+      const rb=el('button','','Retry');rb.style.marginLeft='6px';rb.style.fontSize='11px';
+      rb.onclick=()=>action(async()=>{await post(`/api/conversations/${cur}/messages/${r.id}/retry`);await loadConv()});
+      d.append(rb);
+    }
+    m.append(d)}
   m.scrollTop=m.scrollHeight;
+  loadConvOrders();
   windowOpen=!!lastIn&&(Date.now()-new Date(lastIn).getTime()<WINDOW_MS);
   $('convname').textContent=(document.querySelector('.row.sel b')?.textContent)||('#'+cur);
   $('convmode').textContent=curMode||'';$('convmode').className='tag '+(curMode||'');
@@ -319,17 +342,22 @@ function updateControls(){
   $('ret').disabled=!sel||inflight||!handle||curMode==='AI';
   $('assign').disabled=!sel||inflight||!handle;$('cstatus').disabled=!sel||inflight||!handle;
   $('note-add').disabled=!sel||inflight||!handle;$('note-input').disabled=!sel||inflight||!handle;
-  const canSend=sel&&windowOpen&&!inflight&&handle;$('text').disabled=!canSend;$('send').disabled=!canSend;
-  $('hint').textContent=!sel?'':(!handle?'Read-only: you do not have permission to reply.':(!windowOpen?'24h window closed — send an approved template below.':(curMode==='AI'?'AI is handling this chat — take over before replying as a human.':'')));
-  // Outside the 24h window a handler sends an approved template instead of free-form text.
-  const showTmpl=sel&&!windowOpen&&handle;
+  // Real-outbound gate: a pilot-channel conversation cannot actually send while Evolution is LIVE
+  // (not simulation) and EVOLUTION_REAL_OUTBOUND_ENABLED=false — the server rejects it before any
+  // real HTTP call either way, but the composer must say so up front instead of failing silently.
+  const pilotSendBlocked=sel&&curChannel==='whatsapp_evolution_pilot'&&epStatus.configured&&!epStatus.simulation_mode&&!epStatus.real_outbound_enabled;
+  const canSend=sel&&windowOpen&&!inflight&&handle&&!pilotSendBlocked;$('text').disabled=!canSend;$('send').disabled=!canSend;
+  $('hint').textContent=!sel?'':(pilotSendBlocked?'Real WhatsApp sending disabled (EVOLUTION_REAL_OUTBOUND_ENABLED=false) — no manual or template reply can reach this customer right now.':(!handle?'Read-only: you do not have permission to reply.':(!windowOpen?'24h window closed — send an approved template below.':(curMode==='AI'?'AI is handling this chat — take over before replying as a human.':''))));
+  // Outside the 24h window a handler sends an approved template instead of free-form text — but
+  // never offer the template path either when real sending is actually blocked.
+  const showTmpl=sel&&!windowOpen&&handle&&!pilotSendBlocked;
   $('tmplwrap').classList.toggle('hidden',!showTmpl);
   if(showTmpl&&$('tmplsel').dataset.n!==String(templatesCache.length)){
     const ts=$('tmplsel');ts.replaceChildren();
     for(const t of templatesCache.filter(x=>x.status==='approved')){const o=el('option','',`${t.name} [${t.language}] · ${t.variables} var(s)`);o.value=String(t.id);ts.append(o)}
     ts.dataset.n=String(templatesCache.length);
   }
-  $('tmplsend').disabled=inflight;
+  $('tmplsend').disabled=inflight||pilotSendBlocked;
 }
 function action(fn){act++;updateControls();Promise.resolve().then(fn).catch(e=>showError(e.message)).finally(()=>{act--;updateControls()})}
 $('toggle').onclick=()=>action(async()=>{await post(ai?'/api/agent/pause':'/api/agent/resume');await loadList()});
@@ -344,6 +372,19 @@ async function loadNotes(){if(!cur)return;try{const ns=await api(`/api/conversat
 $('note-add').onclick=()=>{const t=$('note-input').value.trim();if(!cur||!t)return;action(async()=>{await post(`/api/conversations/${cur}/notes`,{body:t});$('note-input').value='';await loadNotes()})};
 function doSend(){const t=$('text').value.trim();if(!cur||!t)return;action(async()=>{await post(`/api/conversations/${cur}/messages`,{text:t});$('text').value='';await loadConv()})}
 $('send').onclick=doSend;$('text').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend()}});
+
+async function loadConvOrders(){
+  if(!cur)return;const box=$('convorders');
+  try{const orders=await api(`/api/conversations/${cur}/orders`);
+    if(!orders.length){box.style.display='none';return}
+    box.style.display='block';box.replaceChildren();
+    box.append(el('b','','Orders for this conversation: '));
+    for(const o of orders){
+      const items=(o.items||[]).map(it=>`${it.qty}× ${it.sku}`).join(', ');
+      box.append(el('span','tag '+o.status,`#${o.id} ${o.status} — ${items} (${o.total} ${o.currency})`),document.createTextNode(' '));
+    }
+  }catch{box.style.display='none'}
+}
 
 // ---- knowledge ----
 async function loadKnowledge(){try{const arts=await api('/api/knowledge');const l=$('k-list');l.replaceChildren();

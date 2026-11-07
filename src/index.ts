@@ -8,6 +8,8 @@ import { ensureBootstrapAdmin } from './modules/auth/users';
 import { sweepExpiredSessions } from './modules/auth/session';
 import { recoverPending } from './modules/conversations';
 import { webhook } from './modules/whatsapp/webhook';
+import { evolutionWebhook } from './modules/whatsapp-evolution/webhook';
+import { evolutionSimulate } from './modules/whatsapp-evolution/simulate';
 
 async function main() {
   assertProdConfig();
@@ -45,11 +47,30 @@ async function main() {
     res.status(500).json({ error: 'internal' });
   });
   const server = app.listen(cfg.port, () => log.info('listening', { port: cfg.port }));
+
+  // Evolution API pilot (EXPERIMENTAL, owner-authorized, non-production — docs/26_EVOLUTION_PILOT.md):
+  // a SECOND, minimal listener that serves nothing but the pilot webhook route. Only this port
+  // should ever be exposed via a tunnel; the main `server` above (admin + Meta webhook) never is.
+  // Only starts when EVOLUTION_API_BASE_URL is set; assertProdConfig() already refused to boot in
+  // production if it is, so this can only ever run in dev.
+  let evoServer: import('http').Server | undefined;
+  if (cfg.evolutionApiBaseUrl) {
+    const evoApp = express();
+    evoApp.disable('x-powered-by');
+    evoApp.set('trust proxy', 1);
+    evoApp.use(evolutionWebhook);
+    if (cfg.evolutionPilotSimulationMode) evoApp.use(evolutionSimulate);
+    evoServer = evoApp.listen(cfg.evolutionWebhookPort, () =>
+      log.info('evolution_pilot.listening', { port: cfg.evolutionWebhookPort, instance: cfg.evolutionInstanceName, simulationMode: cfg.evolutionPilotSimulationMode }));
+  } else {
+    log.info('evolution_pilot.disabled', { hint: 'set EVOLUTION_API_BASE_URL to enable the isolated pilot webhook receiver (docs/26_EVOLUTION_PILOT.md)' });
+  }
+
   await recoverPending();
   // Periodically purge expired sessions (also purged lazily on resolve).
   const sweep = setInterval(() => void sweepExpiredSessions().catch((e) => log.warn('session.sweep_failed', { err: e?.message })), 3_600_000);
   sweep.unref?.();
-  const stop = () => server.close(() => pool.end().then(() => process.exit(0)));
+  const stop = () => server.close(() => (evoServer ? evoServer.close(() => pool.end().then(() => process.exit(0))) : pool.end().then(() => process.exit(0))));
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);
 }

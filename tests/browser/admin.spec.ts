@@ -35,9 +35,9 @@ test.describe('dashboard (signed in as admin)', () => {
   test.beforeEach(async ({ page }) => loginAs(page, 'admin', ADMIN_PW));
 
   test('lists seeded conversations with distinct state badges', async ({ page }) => {
-    await expect(page.locator('#list .row')).toHaveCount(2);
+    await expect(page.locator('#list .row')).toHaveCount(3); // Alice, Bob, and the seeded Evolution-pilot conversation
     await expect(page.locator('#list .tag.HUMAN_PENDING')).toBeVisible();
-    await expect(page.locator('#list .tag.AI')).toBeVisible();
+    await expect(page.locator('#list .tag.AI').first()).toBeVisible(); // Alice and the seeded pilot conversation are both AI-mode
   });
 
   test('selecting a conversation loads its messages', async ({ page }) => {
@@ -78,12 +78,12 @@ test.describe('dashboard (signed in as admin)', () => {
   });
 
   test('inbox: search filters the conversation list', async ({ page }) => {
-    await expect(page.locator('#list .row')).toHaveCount(2);
+    await expect(page.locator('#list .row')).toHaveCount(3);
     await page.locator('#search').fill('Alice');
     await expect(page.locator('#list .row')).toHaveCount(1);
     await expect(page.locator('#list .row')).toContainText('Alice');
     await page.locator('#search').fill('');
-    await expect(page.locator('#list .row')).toHaveCount(2);
+    await expect(page.locator('#list .row')).toHaveCount(3);
   });
 
   test('inbox: status change persists and the status filter works', async ({ page }) => {
@@ -142,10 +142,12 @@ test('orders: admin can confirm a seeded draft order (becomes CONFIRMED)', async
   await loginAs(page, 'admin', ADMIN_PW);
   await page.locator('#nav-orders').click();
   await expect(page.locator('#orders-view')).toBeVisible();
-  const row = page.locator('#o-list .ordrow', { hasText: 'RUG-1' });
+  // '1× RUG-1' (not just 'RUG-1') disambiguates from the separately-seeded pilot-channel order,
+  // which also references RUG-1 but as '2× RUG-1'.
+  const row = page.locator('#o-list .ordrow', { hasText: '1× RUG-1' });
   await expect(row).toContainText('DRAFT');
   await row.getByRole('button', { name: 'Confirm' }).click();
-  await expect(page.locator('#o-list .ordrow', { hasText: 'RUG-1' })).toContainText('CONFIRMED');
+  await expect(page.locator('#o-list .ordrow', { hasText: '1× RUG-1' })).toContainText('CONFIRMED');
 });
 
 test('templates: a closed-window conversation shows the approved-template picker, not free-form', async ({ page }) => {

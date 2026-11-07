@@ -5,14 +5,17 @@ import { audit, getSetting, pool, q, setSetting } from '../../db';
 import { log } from '../../log';
 import { FailureThrottle } from '../../security/throttle';
 import { assignConversation, returnToAI, takeover, type Actor } from '../handoff';
+import { schedule } from '../conversations';
 import { sendText } from '../whatsapp/client';
 import { canSendFreeForm } from '../whatsapp/rules';
+import { sendEvolutionText } from '../whatsapp-evolution/client';
+import { EVOLUTION_PILOT_CHANNEL } from '../whatsapp-evolution/rules';
 import { authenticateBasic } from './auth';
 import { clampLimit, parseBeforeId } from './pagination';
 import { grantsFor, hasPermission, type Permission, type Role } from '../auth/rbac';
 import { createSession, csrfOk, destroySession, parseCookie, resolveSession } from '../auth/session';
 import { createUser, getActiveUserByUsername, listUsers, setUserActive, setUserPassword, setUserRole, verifyPassword } from '../auth/users';
-import { previewSystemPrompt } from '../agent';
+import { businessProvider, previewSystemPrompt } from '../agent';
 import { isVolatile, lintArticle, parseVocabImport } from '../knowledge/validate';
 import { cancelOrder, confirmOrder, listOrders } from '../tools/orders';
 import { sendTemplate } from '../whatsapp/client';
@@ -144,6 +147,10 @@ admin.get('/api/conversations', requirePermission('view'), async (req, res) => {
   if (assignee === 'me') { if (u.id == null) where.push('c.assigned_user_id IS NULL'); else { params.push(u.id); where.push(`c.assigned_user_id = $${params.length}`); } }
   else if (assignee === 'unassigned') where.push('c.assigned_user_id IS NULL');
   else if (/^\d+$/.test(assignee)) { params.push(Number(assignee)); where.push(`c.assigned_user_id = $${params.length}`); }
+  // Channel: distinguishes the production Meta transport ('whatsapp') from the isolated Evolution
+  // pilot ('whatsapp_evolution_pilot') — operators must always be able to tell these apart.
+  const channel = String(req.query.channel ?? '');
+  if (channel) { params.push(channel); where.push(`c.channel = $${params.length}`); }
   const search = String(req.query.q ?? '').trim().slice(0, 200);
   if (search) {
     params.push(`%${search}%`);
@@ -153,7 +160,8 @@ admin.get('/api/conversations', requirePermission('view'), async (req, res) => {
   params.push(limit);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   res.json(await q(`
-    SELECT c.id, c.mode, c.status, c.assigned_user_id, c.last_message_at, c.assigned_user, cu.wa_id, cu.display_name,
+    SELECT c.id, c.mode, c.status, c.channel, c.assigned_user_id, c.last_message_at, c.assigned_user, cu.wa_id, cu.display_name,
+      (c.last_inbound_at IS NOT NULL AND (c.last_read_at IS NULL OR c.last_inbound_at > c.last_read_at)) AS unread,
       (SELECT COALESCE(text, transcription) FROM messages m WHERE m.conversation_id=c.id ORDER BY id DESC LIMIT 1) AS last_text,
       (SELECT reason FROM handoffs h WHERE h.conversation_id=c.id AND h.status='PENDING' ORDER BY id DESC LIMIT 1) AS handoff_reason
     FROM conversations c JOIN customers cu ON cu.id=c.customer_id ${whereSql} ORDER BY c.last_message_at DESC LIMIT $${params.length}`, params));
@@ -162,11 +170,33 @@ admin.get('/api/conversations', requirePermission('view'), async (req, res) => {
 admin.get('/api/conversations/:id', requirePermission('view'), async (req, res) => {
   const limit = clampLimit(req.query.limit, 200, 500);
   const beforeId = parseBeforeId(req.query.before_id);
+  // Marking as read is a human-staff UI concept — only a real logged-in session does it, never the
+  // read-only bridge service account polling this same endpoint for sync purposes.
+  if ((req as any).authKind === 'session') await q(`UPDATE conversations SET last_read_at=now() WHERE id=$1`, [req.params.id]);
   res.json(await q(
     `SELECT id, direction, sender_type, message_type, text, transcription, delivery_status, processing_status, error, created_at
      FROM messages WHERE conversation_id=$1 AND ($2::bigint IS NULL OR id < $2) ORDER BY id DESC LIMIT $3`,
     [req.params.id, beforeId, limit],
   ).then((r) => r.reverse()));
+});
+
+// Orders linked to this conversation (the "lead" context a handler needs alongside the thread).
+admin.get('/api/conversations/:id/orders', requirePermission('view'), async (req, res) =>
+  res.json(await q(`SELECT id, status, items, currency, total, created_by, confirmed_by, cancelled_by, created_at FROM orders WHERE conversation_id=$1 ORDER BY id DESC`, [req.params.id])));
+
+// Safe retry for a message that failed processing (e.g. a transient send error) — re-queues it on
+// the normal pipeline exactly as recoverPending() does after a crash; never duplicates a reply
+// (the pipeline's own debounce/single-flight + dedupe still apply), never bypasses AI/HUMAN mode.
+admin.post('/api/conversations/:id/messages/:msgId/retry', requireConvAccess, async (req, res) => {
+  const convId = Number(req.params.id);
+  const r = await q(
+    `UPDATE messages SET processing_status='PENDING', error=NULL WHERE id=$1 AND conversation_id=$2 AND direction='IN' AND processing_status='FAILED' RETURNING id`,
+    [req.params.msgId, convId],
+  );
+  if (!r.length) return void res.status(409).json({ error: 'message is not retryable (not found, not FAILED, or not inbound)' });
+  await audit(who(req).username, 'message.retry', 'message', String(req.params.msgId), null, { conversationId: convId });
+  schedule(convId, 0);
+  res.json({ ok: true });
 });
 
 admin.post('/api/conversations/:id/takeover', requireConvAccess, async (req, res) => { await takeover(Number(req.params.id), actor(req)); res.json({ ok: true }); });
@@ -175,10 +205,14 @@ admin.post('/api/conversations/:id/return-to-ai', requireConvAccess, async (req,
 admin.post('/api/conversations/:id/messages', requireConvAccess, async (req, res) => {
   const text = String(req.body?.text ?? '').trim();
   if (!text) return void res.status(400).json({ error: 'empty' });
-  const c = (await q(`SELECT c.id, c.last_inbound_at, cu.wa_id FROM conversations c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, [req.params.id]))[0];
+  const c = (await q(`SELECT c.id, c.channel, c.last_inbound_at, cu.wa_id FROM conversations c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, [req.params.id]))[0];
   if (!c) return void res.sendStatus(404);
   if (!canSendFreeForm(c.last_inbound_at)) return void res.status(409).json({ error: '24h window closed: only an approved template can be sent' });
-  const waId = await sendText(c.wa_id, text);
+  // Dispatch to the SAME transport this conversation actually came in on — a manual human reply
+  // must never silently fall through to the Meta client for an Evolution-pilot conversation (that
+  // crashed before this fix: wrong credentials, wrong API entirely).
+  const send = c.channel === EVOLUTION_PILOT_CHANNEL ? sendEvolutionText : sendText;
+  const waId = await send(c.wa_id, text);
   await q(`INSERT INTO messages(conversation_id, whatsapp_message_id, direction, sender_type, message_type, text, delivery_status) VALUES($1,$2,'OUT','HUMAN','TEXT',$3,'sent')`, [c.id, waId, text]);
   await q(`UPDATE conversations SET last_message_at=now() WHERE id=$1`, [c.id]);
   await audit(who(req).username, 'message.send', 'conversation', c.id, null, { text });
@@ -240,6 +274,24 @@ admin.get('/api/agent-settings', requirePermission('view'), async (_req, res) =>
     voice_notes_enabled: await getSetting('voice_notes_enabled', true),
     extra_instructions: await getSetting('extra_instructions', ''),
     meta_configured: Boolean(cfg.graphVersion && cfg.appSecret && cfg.phoneNumberId && cfg.accessToken),
+    // Never claim mock replies are real AI — surface this plainly in the dashboard itself, not
+    // just in a one-off report. mock=true means every reply (on any channel) is the canned
+    // "[mock] received: ..." text, regardless of how real the rest of the pipeline is.
+    ai_provider: { mock: cfg.mock, configured: Boolean(cfg.openaiKey) },
+    // Evolution pilot status (docs/26_EVOLUTION_PILOT.md) — the operator-visible kill switch and
+    // allowlist state, so "is a live reply even possible right now" is never a guess from reading
+    // .env. COUNTS ONLY, never the raw numbers themselves — this is a real HTTP response, visible
+    // to anyone with dashboard/API access (and, via the Marketing OS proxy, browser devtools) —
+    // not just an internal log line.
+    evolution_pilot: {
+      configured: Boolean(cfg.evolutionApiBaseUrl),
+      simulation_mode: cfg.evolutionPilotSimulationMode,
+      auto_reply_enabled: cfg.evolutionPilotAutoReplyEnabled,
+      real_outbound_enabled: cfg.evolutionRealOutboundEnabled,
+      allowed_test_numbers_count: cfg.evolutionPilotAllowedTestNumbers.length,
+      real_inbound_allowlist_count: cfg.evolutionRealInboundAllowlist.length,
+      instance: cfg.evolutionInstanceName,
+    },
   });
 });
 admin.patch('/api/agent-settings', requirePermission('manage_settings'), async (req, res) => {
@@ -399,7 +451,7 @@ async function orderConvAccess(req: Request, res: Response): Promise<boolean> {
 admin.get('/api/orders', requirePermission('view'), async (req, res) => res.json(await listOrders(String(req.query.status ?? ''), clampLimit(req.query.limit, 100, 500))));
 admin.post('/api/orders/:id/confirm', requirePermission('confirm_orders'), async (req, res) => {
   if (!(await orderConvAccess(req, res))) return;
-  const r = await confirmOrder(Number(req.params.id), actor(req));
+  const r = await confirmOrder(Number(req.params.id), actor(req), businessProvider);
   if (r.kind === 'not_found') return void res.sendStatus(404);
   if (r.kind === 'conflict') return void res.status(409).json({ error: `order is ${r.status}` });
   if (r.kind === 'issues') return void res.status(409).json({ error: 'revalidation failed', issues: r.issues });
@@ -407,7 +459,7 @@ admin.post('/api/orders/:id/confirm', requirePermission('confirm_orders'), async
 });
 admin.post('/api/orders/:id/cancel', requirePermission('confirm_orders'), async (req, res) => {
   if (!(await orderConvAccess(req, res))) return;
-  const r = await cancelOrder(Number(req.params.id), actor(req));
+  const r = await cancelOrder(Number(req.params.id), actor(req), businessProvider);
   if (r.kind === 'ok') return void res.json({ ok: true, order: r.order });
   if (r.kind === 'not_found') return void res.sendStatus(404);
   return void res.status(409).json({ error: r.kind === 'conflict' ? `order is ${r.status}` : 'cannot cancel' });
@@ -430,8 +482,12 @@ admin.post('/api/conversations/:id/template', requireConvAccess, async (req, res
   const t = (await q(`SELECT * FROM templates WHERE id=$1`, [req.body?.template_id]))[0];
   const v = validateTemplateSend(t as any, req.body?.variables);
   if (v.error) return void res.status(400).json({ error: v.error });
-  const c = (await q(`SELECT c.id, cu.wa_id FROM conversations c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, [req.params.id]))[0];
+  const c = (await q(`SELECT c.id, c.channel, cu.wa_id FROM conversations c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, [req.params.id]))[0];
   if (!c) return void res.sendStatus(404);
+  // Approved templates are a Meta-specific concept (the sanctioned way to message outside the 24h
+  // window on that platform) — there is no Evolution-pilot equivalent, so this must say so clearly
+  // rather than crash trying to call the Meta client with no Meta credentials configured.
+  if (c.channel === EVOLUTION_PILOT_CHANNEL) return void res.status(400).json({ error: 'approved templates are a Meta-channel-only feature; not available for the Evolution pilot channel' });
   const waId = await sendTemplate(c.wa_id, t.meta_template_name, t.language, v.params!);
   const preview = renderPreview(t.body_preview, v.params!);
   await q(`INSERT INTO messages(conversation_id,whatsapp_message_id,direction,sender_type,message_type,text,delivery_status) VALUES($1,$2,'OUT','HUMAN','TEMPLATE',$3,'sent')`, [c.id, waId, preview]);

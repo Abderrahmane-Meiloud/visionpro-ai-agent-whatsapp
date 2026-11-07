@@ -10,11 +10,15 @@ test('RBAC grants: admin all, agent limited, viewer/service read-only', () => {
   assert.equal(hasPermission('agent', 'confirm_orders'), false);
   assert.deepEqual(grantsFor('agent').sort(), ['handle_conversations', 'view'].sort());
   assert.deepEqual(grantsFor('viewer'), ['view']);
-  assert.deepEqual(grantsFor('service'), ['view']); // bridge: read-only, no extra privileges
+  // service (bridge): the VisionPro Marketing OS Agent AI proxy's own trusted credential — can
+  // handle conversations/settings/knowledge, but never manage staff users or confirm orders.
+  assert.deepEqual(grantsFor('service').sort(), ['handle_conversations', 'manage_knowledge', 'manage_settings', 'view'].sort());
   assert.deepEqual(grantsFor('nonsense'), []);
   assert.equal(hasPermission('agent', 'handle_conversations'), true);
   assert.equal(hasPermission('agent', 'manage_users'), false);
-  assert.equal(hasPermission('service', 'handle_conversations'), false); // service cannot mutate
+  assert.equal(hasPermission('service', 'handle_conversations'), true); // Agent AI proxy can take over/reply
+  assert.equal(hasPermission('service', 'manage_users'), false); // still never staff management
+  assert.equal(hasPermission('service', 'confirm_orders'), false); // still never order confirm/cancel
   assert.equal(hasPermission('viewer', 'handle_conversations'), false);
 });
 

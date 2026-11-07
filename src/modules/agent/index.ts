@@ -32,7 +32,10 @@ function pickBusinessProvider(): BusinessProvider {
   });
 }
 
-const business = makeBusinessTools(pickBusinessProvider());
+// Exported so admin/index.ts's order confirm/cancel endpoints revalidate against the SAME
+// provider create_order_draft used — see orders.ts::confirmOrder's docstring on why that matters.
+export const businessProvider = pickBusinessProvider();
+const business = makeBusinessTools(businessProvider);
 
 export type AgentResult = { reply: string; model: string; handedOff: boolean };
 

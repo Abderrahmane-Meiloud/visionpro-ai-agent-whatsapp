@@ -24,9 +24,9 @@ For every phase:
 7. Continue only when phase passes
 
 ## Never
-- use Evolution API
-- use Baileys
-- automate WhatsApp Web
+- use Evolution API, Baileys, or automate WhatsApp Web **for the production client channel**
+  (the ONLY exception in this entire repo is the isolated, non-production pilot transport
+  documented in `docs/26_EVOLUTION_PILOT.md` — do not use this as precedent for anything else)
 - generate QR-session WhatsApp bots
 - commit `.env`
 - log bearer tokens/secrets

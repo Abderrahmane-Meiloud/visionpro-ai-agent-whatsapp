@@ -37,6 +37,10 @@ Admin: `https://$DOMAIN/` (Basic auth: `ADMIN_USER` / `ADMIN_PASSWORD`).
 - Replies only inside the 24h customer-service window (free-form). Outside it, only approved templates are allowed (not implemented in V1).
 - No proactive/bulk messaging. Duplicate webhooks are ignored; AI never replies in HUMAN/PAUSED mode.
 
+## Evolution API pilot (experimental, non-production)
+An isolated, owner-authorized pilot transport exists alongside the Meta integration above, for
+internal experimentation only. See [docs/26_EVOLUTION_PILOT.md](docs/26_EVOLUTION_PILOT.md).
+
 ## Known limitations (V1)
 - Admin is a single Basic-auth login, not roles; the UI is one static page rather than Next.js.
 - No product/price/stock tools yet (no client data): the agent hands off those questions.

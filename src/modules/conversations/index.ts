@@ -6,10 +6,15 @@ import { requestHandoff } from '../handoff';
 import { transcribe } from '../transcription';
 import { downloadMedia, markRead, sendText } from '../whatsapp/client';
 import { canSendFreeForm } from '../whatsapp/rules';
+import { sendEvolutionText } from '../whatsapp-evolution/client';
+import { EVOLUTION_PILOT_CHANNEL, isPilotAutoReplyAllowed } from '../whatsapp-evolution/rules';
 
 export type Inbound = {
   waId: string; name?: string; messageId: string; type: string;
   text?: string; mediaId?: string; mime?: string;
+  // Defaults to 'whatsapp' (the Meta Cloud API production channel). The Evolution pilot webhook
+  // passes EVOLUTION_PILOT_CHANNEL explicitly; nothing else should ever set this.
+  channel?: string;
 };
 
 const timers = new Map<number, NodeJS.Timeout>();
@@ -22,9 +27,9 @@ export async function ingest(m: Inbound): Promise<void> {
      ON CONFLICT (wa_id) DO UPDATE SET display_name=COALESCE(EXCLUDED.display_name, customers.display_name), updated_at=now()
      RETURNING id`, [m.waId, m.name ?? null]))[0];
   const conv = (await q(
-    `INSERT INTO conversations(customer_id, last_inbound_at) VALUES($1, now())
+    `INSERT INTO conversations(customer_id, channel, last_inbound_at) VALUES($1, $2, now())
      ON CONFLICT (customer_id) DO UPDATE SET last_message_at=now(), last_inbound_at=now()
-     RETURNING id, status`, [cust.id]))[0];
+     RETURNING id, status`, [cust.id, m.channel ?? 'whatsapp']))[0];
 
   const type = m.type === 'text' ? 'TEXT' : m.type === 'audio' ? 'AUDIO' : m.type === 'image' ? 'IMAGE' : m.type === 'document' ? 'DOCUMENT' : 'SYSTEM';
   const ins = await q(
@@ -70,11 +75,18 @@ async function processConversation(convId: number) {
        RETURNING id, message_type, text, media_meta`, [convId]);
     if (!batch.length) return;
     const ids = batch.map((b) => b.id);
-    const conv = (await q(`SELECT c.mode, c.last_inbound_at, c.stt_failures, cu.wa_id FROM conversations c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, [convId]))[0];
+    const conv = (await q(`SELECT c.mode, c.channel, c.last_inbound_at, c.stt_failures, cu.wa_id FROM conversations c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, [convId]))[0];
 
     const paused = !(await getSetting<boolean>('ai_enabled', true));
     if (conv.mode !== 'AI' || paused) {
       await q(`UPDATE messages SET processing_status=$2 WHERE id = ANY($1)`, [ids, paused ? 'SKIPPED_PAUSED' : 'SKIPPED_HUMAN']);
+      return;
+    }
+    // Evolution pilot gate: automatic replies stay off for everyone except an explicitly
+    // authorized test number, independent of the mode/pause checks above. See docs/26_EVOLUTION_PILOT.md.
+    if (conv.channel === EVOLUTION_PILOT_CHANNEL && !isPilotAutoReplyAllowed(conv.wa_id, cfg.evolutionPilotAutoReplyEnabled, cfg.evolutionPilotAllowedTestNumbers)) {
+      await q(`UPDATE messages SET processing_status='SKIPPED_PILOT_GATE' WHERE id = ANY($1)`, [ids]);
+      log.info('evolution_pilot.auto_reply_gated', { conversationId: convId });
       return;
     }
 
@@ -126,7 +138,8 @@ async function processConversation(convId: number) {
     if (!canSendFreeForm(now.last_inbound_at)) { await fail(ids, 'outside 24h window'); return; }
 
     try {
-      const waId = await sendText(conv.wa_id, reply);
+      const send = conv.channel === EVOLUTION_PILOT_CHANNEL ? sendEvolutionText : sendText;
+      const waId = await send(conv.wa_id, reply);
       await q(`INSERT INTO messages(conversation_id, whatsapp_message_id, direction, sender_type, message_type, text, model_name, delivery_status)
                VALUES($1,$2,'OUT','AI','TEXT',$3,$4,'sent')`, [convId, waId, reply, model]);
       await q(`UPDATE conversations SET last_message_at=now() WHERE id=$1`, [convId]);

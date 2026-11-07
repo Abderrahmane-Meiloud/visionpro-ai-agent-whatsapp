@@ -80,3 +80,13 @@ Official API only; signature-verified webhook; free-form replies only within 24h
 - Rotate any credential that was ever shared in chat or email. None are stored in this repository.
 - Agents cannot enter passwords for authentication; ask the owner to log in or add keys themselves.
 - Windows dev machine: use the built-in tools. Local Docker can run a throwaway `postgres:16-alpine` for the smoke test.
+
+## 11. Evolution API pilot (experimental, owner-authorized, NON-PRODUCTION)
+An isolated pilot transport exists on top of the Meta integration above, using the existing
+Evolution API instance `vision`, for internal experimentation only — never for this medical-care
+client's production number or any real customer. Full detail, isolation mechanisms and step-by-step
+usage: `docs/26_EVOLUTION_PILOT.md`. One-line summary: separate DB channel tag, separate customer-id
+namespace, separate network listener/port, hard-refused if `NODE_ENV=production`, and automatic
+replies stay off until the owner enables them for an explicitly authorized test number. This does
+not change section 7's Meta rollout plan or any ban-safety rule in `docs/14_WHATSAPP_POLICY_AND_COMPLIANCE.md`
+for the real client channel.

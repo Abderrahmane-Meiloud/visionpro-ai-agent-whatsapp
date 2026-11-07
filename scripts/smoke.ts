@@ -229,10 +229,16 @@ function sess(sid?: string, csrf?: string) {
   }
 
   // ===== P2-A: team management (RBAC, sessions, CSRF, ownership, revocation) =====
-  // bridge (service role, Basic) is read-only
+  // bridge (service role, Basic) is the VisionPro Marketing OS Agent AI proxy's own trusted
+  // credential (see src/modules/auth/rbac.ts's docstring): it CAN take over/reply/pause — that
+  // proxy's own endpoints need exactly this — but still cannot manage staff users or confirm/
+  // cancel orders, which stay human-only regardless of caller.
   assert.equal((await bridge('/api/conversations')).status, 200, 'bridge can read conversations');
-  assert.equal((await bridge(`/api/conversations/${convId}/takeover`, 'POST')).status, 403, 'bridge cannot take over (read-only service)');
-  assert.equal((await bridge('/api/agent/pause', 'POST')).status, 403, 'bridge cannot pause the agent');
+  assert.equal((await bridge(`/api/conversations/${convId}/takeover`, 'POST')).status, 200, 'bridge can take over (Agent AI proxy credential)');
+  assert.equal((await bridge(`/api/conversations/${convId}/return-to-ai`, 'POST')).status, 200, 'bridge can return a conversation to AI');
+  assert.equal((await bridge('/api/agent/pause', 'POST')).status, 200, 'bridge can pause the agent (Agent AI proxy credential)');
+  assert.equal((await bridge('/api/agent/resume', 'POST')).status, 200, 'bridge resumes it again, state restored');
+  assert.equal((await bridge('/api/users', 'POST', { username: 'bridge-should-fail', password: 'wontbeused123', role: 'admin' })).status, 403, 'bridge still cannot manage staff users');
   {
     const row = (await bridge('/api/conversations').then((r) => r.json()))[0];
     for (const k of ['id', 'mode', 'last_message_at', 'assigned_user', 'wa_id', 'display_name', 'last_text', 'handoff_reason'])

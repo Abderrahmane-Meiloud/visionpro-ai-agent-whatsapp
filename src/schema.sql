@@ -230,6 +230,14 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS orders_conv_idx ON orders (conversation_id, id);
 CREATE INDEX IF NOT EXISTS orders_status_idx ON orders (status, id DESC);
 
+-- ============================================================================
+-- Dashboard completeness pass (channel visibility, unread, retry — additive).
+-- ============================================================================
+
+-- A human staff member's last view of a conversation; compared against last_inbound_at to compute
+-- "unread" in the conversation list. NULL means "never viewed" (unread if anything has arrived).
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS templates (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL,                       -- human label

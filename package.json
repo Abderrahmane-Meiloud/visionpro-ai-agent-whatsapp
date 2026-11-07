@@ -3,15 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx --env-file=.env watch src/index.ts",
     "build": "tsc && cp src/schema.sql dist/ && mkdir -p dist/modules/admin && cp src/modules/admin/admin.html dist/modules/admin/",
-    "start": "node dist/index.js",
-    "migrate": "node dist/migrate.js",
-    "migrate:dev": "node --import tsx src/migrate.ts",
+    "start": "node --env-file=.env dist/index.js",
+    "migrate": "node --env-file=.env dist/migrate.js",
+    "migrate:dev": "node --env-file=.env --import tsx src/migrate.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:browser": "playwright test",
     "typecheck": "tsc --noEmit",
-    "smoke": "node --import tsx scripts/smoke.ts"
+    "smoke": "node --env-file=.env --import tsx scripts/smoke.ts",
+    "smoke:evolution": "node --env-file=.env --import tsx scripts/smoke_evolution_pilot.ts",
+    "smoke:evolution:catalog": "node --env-file=.env --import tsx scripts/smoke_evolution_catalog_and_orders.ts",
+    "check:evolution": "node --env-file=.env --import tsx scripts/check_evolution_instance.ts",
+    "configure:evolution-webhook": "node --env-file=.env --import tsx scripts/configure_evolution_webhook.ts"
   },
   "engines": {
     "node": ">=20"
